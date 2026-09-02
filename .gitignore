@@ -1,0 +1,5 @@
+# Apps Script backend is managed in the private Apps Script project.
+apps-script-project/
+
+# Local backend tests load files from apps-script-project/.
+tests/
