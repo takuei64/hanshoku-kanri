@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'breeding-pwa-v137-github-1';
+const CACHE_NAME = 'breeding-pwa-v138-history-1';
 const BASE_PATH = '/hanshoku-kanri/';
 const APP_SHELL = [
   BASE_PATH,
@@ -35,7 +35,7 @@ self.addEventListener('activate', function(event) {
   event.waitUntil(
     caches.keys()
       .then(function(keys) {
-        return Promise.all(keys.filter(function(key) { return key !== CACHE_NAME; }).map(function(key) {
+        return Promise.all(keys.filter(function(key) { return key.indexOf('breeding-pwa-') === 0 && key !== CACHE_NAME; }).map(function(key) {
           return caches.delete(key);
         }));
       })
