@@ -37,3 +37,28 @@ Apps Script の `api_reproductive_history.js` が一覧データへ履歴を付�
 ```bash
 node --test test/reproductive-history.test.cjs
 ```
+
+## 公開PWAと Apps Script 画面のずれ
+
+現場が開く公開画面は GitHub Pages です。Service Worker の `CACHE_NAME` を変えると、次回オンライン起動で古い画面キャッシュを捨てます。
+
+Apps Script「生産管理_協和資糧」の Web アプリ URL は、別物の同梱 HTML（`js_offline.html` など）を出します。こちらはリポジトリ外で、精液採取日のボタンも、削除済みを同期中にキューから外す処理も入っていません。実行 URL を直接開いている端末には、Pages の修正は届きません。合わせるときは Pages の `js_*.js` を GAS の `js_*.html` に取り込み、新しいバージョンとして同じ exec URL へデプロイします。このリポジトリの変更だけでは本番 GAS は更新されません。
+
+種付の `args` は `[母豚No, 種付日]` の2つのままです。採取日を選ばなくても種付自体は送ります。選んだときだけ `semenCollectionDate` と `semenAgeDays` を足します。
+
+種付がシートに残らず「要確認」が増えた主因は、本番GAS `api_breeding.js` の `ensureMatingSemenHeaders_` です。次の呼び出しは、Apps Script の `getRange(row, column, numRows, numColumns)` では第4引数が列数なので、E〜J の6列に2列データを書いて例外になります。種付のたびに失敗し、キューが failed になります。削除修正が効いていないように見えたのも、種付行自体が残っていなかったためです。
+
+```javascript
+// 誤り: E1 から6列
+sheet.getRange(1, 5, 1, 6).setValues([['精液採取日', '精液日齢']]);
+
+// 正しい
+sheet.getRange(1, 5, 1, 2).setValues([['精液採取日', '精液日齢']]);
+// または sheet.getRange('E1:F1').setValues([['精液採取日', '精液日齢']]);
+```
+
+この関数の本体はリポジトリにありません。本番GAS側で上の正しい範囲に直して再デプロイします。岡山版は対象外です。
+
+## 要確認が残ったとき
+
+左上の「要確認」をタップすると、件数ごとに対象とサーバーが返した理由が出ます。削除で「該当する…記録が見つかりません」系（句点や「でした」付きを含む）は、同期処理の途中でもキューから外します。同じ削除を押し直しても件数は増やしません。シートが見つからないエラーは失敗のまま残します。

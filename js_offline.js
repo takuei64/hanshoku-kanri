@@ -101,28 +101,105 @@ var OfflineSync = {
     return parts.join('\n');
   },
 
+  /**
+   * 失敗済みも含めて同じ削除を探す。
+   * 失敗を無視すると、同じ行の押し直しのたびに「要確認」が1件増える。
+   */
   findActiveDuplicate: function(type, args) {
     var key = OfflineSync.deleteKey(type, args);
     if (!key) return null;
     for (var i = 0; i < OfflineSync.queue.length; i++) {
       var op = OfflineSync.queue[i];
-      if (op.state === 'failed') continue;
       if (OfflineSync.deleteKey(op.type, op.args) === key) return op;
     }
     return null;
   },
 
+  normalizeErrorText: function(error) {
+    return String(error == null ? '' : error).replace(/\u3000/g, ' ').replace(/\s+/g, ' ').trim();
+  },
+
   /**
    * 同じ削除を続けて送ると、2件目はサーバーが「該当する記録が見つかりません」と返す。
+   * 句点や「でした」、先頭の例外名が付いても同じ扱いにする。
    * シート自体が無い場合は文言が違うので、成功にはしない。
    */
   isAlreadyDeletedFailure: function(op, error) {
     if (!op || !OfflineSync.isDeleteOperation(op.type)) return false;
-    return /^該当する(種付|分娩|離乳)?記録が見つかりません$/.test(String(error || '').trim());
+    var text = OfflineSync.normalizeErrorText(error).replace(/[。．.]+$/g, '');
+    if (!text || text.indexOf('シートが見つかりません') >= 0) return false;
+    return /該当する(種付|分娩|離乳)?記録が見つかりません(でした)?/.test(text);
   },
 
   acceptQueuedResult: function(op, res) {
-    return !!(res && res.success) || OfflineSync.isAlreadyDeletedFailure(op, res && res.error);
+    if (res && res.success) return true;
+    if (res && res.alreadyDeleted && op && OfflineSync.isDeleteOperation(op.type)) return true;
+    return OfflineSync.isAlreadyDeletedFailure(op, res && res.error);
+  },
+
+  /** 画面を開き直す前でも、同期処理の途中で削除済みの失敗を捨てる。 */
+  dropResolvedFailures: function() {
+    var before = OfflineSync.queue.length;
+    OfflineSync.queue = OfflineSync.queue.filter(function(op) {
+      return !(op && op.state === 'failed' && OfflineSync.isAlreadyDeletedFailure(op, op.error));
+    });
+    if (OfflineSync.queue.length !== before) OfflineSync.saveQueue();
+    return before !== OfflineSync.queue.length;
+  },
+
+  resultErrorText: function(op, res) {
+    if (res && res.error) return String(res.error);
+    var brief = '';
+    try { brief = JSON.stringify(res); } catch (e) { brief = String(res); }
+    if (!brief) brief = '空の応答';
+    if (brief.length > 160) brief = brief.slice(0, 160) + '…';
+    return '保存できませんでした（' + ((op && op.type) || '記録') + ' / 応答: ' + brief + '）';
+  },
+
+  explainFailure: function(error) {
+    var text = OfflineSync.normalizeErrorText(error);
+    if (!text) return 'サーバーから理由が返りませんでした';
+    if (text.indexOf('種付の見出し書き込み（E1:F1）') === 0 || text.indexOf('種付シートE1:F1') >= 0) return text;
+    if (/number of columns in the data does not match|データの列数|列数が一致しません/.test(text)) {
+      return '種付の見出し書き込み（E1:F1）が列数不一致で失敗し、この種付はシートに残っていません。サーバー応答: ' + text;
+    }
+    return text;
+  },
+
+  shortReason: function(error, limit) {
+    var text = OfflineSync.explainFailure(error);
+    var max = limit || 120;
+    if (text.length > max) text = text.slice(0, max) + '…';
+    return text;
+  },
+
+  failureSummary: function() {
+    var groups = [];
+    var byReason = {};
+    for (var i = 0; i < OfflineSync.queue.length; i++) {
+      var op = OfflineSync.queue[i];
+      if (!op || op.state !== 'failed') continue;
+      var reason = String(op.error || '');
+      if (!byReason[reason]) {
+        byReason[reason] = { reason: reason, labels: [] };
+        groups.push(byReason[reason]);
+      }
+      var label = OfflineSync.describeOperation(op);
+      if (op.id) label += ' [' + String(op.id).slice(0, 8) + ']';
+      byReason[reason].labels.push(label);
+    }
+    if (!groups.length) return '';
+    var lines = [];
+    var maxGroups = 5;
+    for (var g = 0; g < groups.length && g < maxGroups; g++) {
+      var labels = groups[g].labels;
+      var shown = labels.slice(0, 3).join('、');
+      if (labels.length > 3) shown += ' ほか' + (labels.length - 3) + '件';
+      lines.push(labels.length + '件 ' + shown);
+      lines.push('理由: ' + OfflineSync.shortReason(groups[g].reason, 140));
+    }
+    if (groups.length > maxGroups) lines.push('ほかの理由 ' + (groups.length - maxGroups) + '種');
+    return lines.join('\n');
   },
 
   normalizeSemenMeta: function(meta) {
@@ -137,6 +214,27 @@ var OfflineSync = {
   enqueue: function(type, args, handlers, meta) {
     var duplicate = OfflineSync.findActiveDuplicate(type, args || []);
     if (duplicate) {
+      if (duplicate.state === 'failed' && OfflineSync.isAlreadyDeletedFailure(duplicate, duplicate.error)) {
+        OfflineSync.removeOperation(duplicate.id);
+        OfflineSync.lastDuplicate = true;
+        OfflineSync.updateStatus();
+        return duplicate.id;
+      }
+      if (duplicate.state === 'failed') {
+        duplicate.state = 'pending';
+        duplicate.attempts = 0;
+        duplicate.nextAttemptAt = 0;
+        duplicate.error = '';
+        delete duplicate.sendingAt;
+        OfflineSync.callbacks[duplicate.id] = handlers || OfflineSync.callbacks[duplicate.id] || {};
+        OfflineSync.lastDuplicate = false;
+        if (!OfflineSync.saveQueue() && typeof App !== 'undefined') {
+          App.toast('端末保存エラー。画面を閉じずに電波のある場所へ移動してください');
+        }
+        OfflineSync.updateStatus();
+        setTimeout(function() { OfflineSync.process(); }, 0);
+        return duplicate.id;
+      }
       OfflineSync.lastDuplicate = true;
       return duplicate.id;
     }
@@ -204,7 +302,7 @@ var OfflineSync = {
     } else if (failed > 0) {
       el.textContent = '要確認 ' + failed;
       el.classList.add('sync-failed');
-      el.title = 'タップして内容を確認';
+      el.title = OfflineSync.failureSummary() || 'タップして内容を確認';
     } else if (pending > 0 && !OfflineSync.isOnline()) {
       el.textContent = '通信待ち ' + pending;
       el.classList.add('sync-waiting');
@@ -216,7 +314,14 @@ var OfflineSync = {
     } else if (pending > 0) {
       el.textContent = '未送信 ' + pending;
       el.classList.add('sync-waiting');
-      el.title = 'タップして再送';
+      var hinted = '';
+      for (var p = 0; p < OfflineSync.queue.length; p++) {
+        if (OfflineSync.queue[p].state === 'pending' && OfflineSync.queue[p].error) {
+          hinted = OfflineSync.shortReason(OfflineSync.queue[p].error, 80);
+          break;
+        }
+      }
+      el.title = hinted ? ('再送待ち: ' + hinted) : 'タップして再送';
     } else {
       el.textContent = '同期済';
       el.classList.add('sync-ok');
@@ -225,16 +330,12 @@ var OfflineSync = {
   },
 
   showStatus: function() {
+    OfflineSync.dropResolvedFailures();
     var failed = OfflineSync.failedCount();
     var pending = OfflineSync.pendingCount();
     if (failed > 0) {
-      var first = null;
-      for (var i = 0; i < OfflineSync.queue.length; i++) {
-        if (OfflineSync.queue[i].state === 'failed') { first = OfflineSync.queue[i]; break; }
-      }
-      var target = first ? '\n対象: ' + OfflineSync.describeOperation(first) : '';
-      var reason = first && first.error ? '\n理由: ' + first.error : '';
-      if (confirm('送信できない記録が' + failed + '件あります。' + target + reason + '\n再送しますか？')) {
+      var summary = OfflineSync.failureSummary();
+      if (confirm('送信できない記録が' + failed + '件あります。\n' + summary + '\n\n再送しますか？')) {
         OfflineSync.retryFailed();
       }
       return;
@@ -284,6 +385,7 @@ var OfflineSync = {
       clearTimeout(OfflineSync.retryTimer);
       OfflineSync.retryTimer = null;
     }
+    if (OfflineSync.dropResolvedFailures()) OfflineSync.updateStatus();
 
     var op = OfflineSync.firstPending();
     if (!op) {
@@ -314,7 +416,10 @@ var OfflineSync = {
       OfflineSync.retryOperation(op, sendToken, '応答待ちがタイムアウトしました');
     }, 25000);
 
-    // args は従来どおり。精液採取日は任意プロパティなので、未対応の保存処理でも種付自体は送れる。
+    // 採取日が無くても args は2つのまま送る。未選択を理由に種付は止めない。
+    // 種付失敗の主因は本番GAS api_breeding.js の ensureMatingSemenHeaders_。
+    // getRange(1, 5, 1, 6) は第4引数が列数なので E〜J の6列になり、2列の見出しで例外になる。
+    // 正しいのは getRange(1, 5, 1, 2) または getRange('E1:F1')。本番GASはこのリポジトリ外で直す。
     var payload = {
       id: op.id,
       type: op.type,
@@ -335,13 +440,18 @@ var OfflineSync = {
         } else if (res && res.retryable) {
           OfflineSync.retryOperation(op, sendToken, res.error || '一時的な保存エラー');
         } else {
-          OfflineSync.failOperation(op, sendToken, (res && res.error) || '保存できませんでした');
+          OfflineSync.failOperation(op, sendToken, OfflineSync.resultErrorText(op, res));
         }
       })
       .withFailureHandler(function(e) {
         if (OfflineSync.activeSendToken !== sendToken) return;
         clearTimeout(timeoutId);
-        OfflineSync.retryOperation(op, sendToken, OfflineSync.errorText(e));
+        var message = OfflineSync.errorText(e);
+        if (OfflineSync.isAlreadyDeletedFailure(op, message)) {
+          OfflineSync.completeOperation(op, sendToken, { success: true, alreadyDeleted: true });
+          return;
+        }
+        OfflineSync.retryOperation(op, sendToken, message);
       })
       .executeQueuedOperation(payload, App.authToken);
   },
@@ -375,6 +485,10 @@ var OfflineSync = {
 
   failOperation: function(op, sendToken, error) {
     if (OfflineSync.activeSendToken !== sendToken) return;
+    if (OfflineSync.isAlreadyDeletedFailure(op, error)) {
+      OfflineSync.completeOperation(op, sendToken, { success: true, alreadyDeleted: true });
+      return;
+    }
     OfflineSync.activeSendToken = '';
     OfflineSync.sending = false;
     op.state = 'failed';
@@ -382,7 +496,8 @@ var OfflineSync = {
     OfflineSync.saveQueue();
     var handlers = OfflineSync.callbacks[op.id] || {};
     if (handlers.onError) handlers.onError(op.error);
-    if (typeof App !== 'undefined') App.toast('保存できない記録があります。左上の「要確認」をタップしてください');
+    if (typeof console !== 'undefined' && console.warn) console.warn('[要確認]', op.type, op.id, op.error);
+    if (typeof App !== 'undefined') App.toast('要確認: ' + OfflineSync.shortReason(op.error, 70));
     OfflineSync.updateStatus();
     setTimeout(function() { OfflineSync.process(); }, 50);
   },
