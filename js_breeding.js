@@ -200,6 +200,7 @@ var Breeding = {
 
     if (!sowNo) { App.toast('母豚番号を入力してください'); return; }
     if (!penNo) { App.toast('ペンNoを入力してください'); return; }
+    if (!App.tryAction('move-submit')) return;
 
     OfflineSync.enqueue('recordMovement', [sowNo, penNo, dateStr]);
     document.getElementById('move-sow').value = '';
@@ -220,9 +221,11 @@ var Breeding = {
     var bt = parseFloat(document.getElementById('bt-value').value);
     var dateStr = document.getElementById('bt-date').value;
     if (isNaN(bt)) { App.toast('BT値を入力してください'); return; }
+    if (!App.tryAction('bt-submit')) return;
 
     var sowNo = Breeding.selectedSow;
     App.hideModal('bt-modal');
+    App.armTapShield(400);
 
     // ローカル更新（即座に反映）
     Breeding.addBTLocal(sowNo, bt, dateStr);
@@ -241,8 +244,11 @@ var Breeding = {
   openMatingModal: function(sowNo) {
     Breeding.pendingAction = { type: 'mating', sowNo: sowNo };
     document.getElementById('status-modal-title').textContent = '種付実施 No.' + sowNo;
-    document.getElementById('status-modal-desc').textContent = '種付シートにも追加されます';
+    document.getElementById('status-modal-desc').textContent = '種付シートに追加されます';
+    document.getElementById('status-semen-block').hidden = false;
     App.setDateDefault('status-date');
+    SemenCollection.bind('status-semen-chips', 'status-date');
+    SemenCollection.mount('status-semen-chips', document.getElementById('status-date').value, null);
     App.showModal('status-modal');
   },
 
@@ -251,20 +257,29 @@ var Breeding = {
     Breeding.pendingAction = { type: 'status', sowNo: sowNo, status: status };
     document.getElementById('status-modal-title').textContent = status + ' No.' + sowNo;
     document.getElementById('status-modal-desc').textContent = 'チェック対象から外れます';
+    document.getElementById('status-semen-block').hidden = true;
     App.setDateDefault('status-date');
     App.showModal('status-modal');
   },
 
   /** ステータス/種付モーダルの確定ボタン */
   confirmStatus: function() {
+    if (App.tapShielded()) return;
     var action = Breeding.pendingAction;
     if (!action) return;
     var dateStr = document.getElementById('status-date').value;
+    if (action.type === 'mating' && !/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || ''))) {
+      App.toast('種付日を確認してください');
+      return;
+    }
+    if (!App.tryAction('status-submit')) return;
     App.hideModal('status-modal');
+    App.armTapShield(400);
 
     if (action.type === 'mating') {
-      App.toast('種付実施を記録しました');
-      OfflineSync.enqueue('recordMating', [action.sowNo, dateStr]);
+      var meta = SemenCollection.read('status-semen-chips');
+      App.toast('種付実施を記録しました' + SemenCollection.toastSuffix(meta));
+      OfflineSync.enqueue('recordMating', [action.sowNo, dateStr], null, meta);
       Breeding.render();
     } else {
       // ステータス変更のみチェック対象から外す。種付はリストに残す。
@@ -304,11 +319,139 @@ var Breeding = {
 
   // --- タップ削除 ---
   confirmDeleteBT: function(sowNo, dateStr, bt) {
-    if (!confirm('BT値 ' + bt + '（' + dateStr + '）を削除しますか？')) return;
+    if (!App.confirmAction('BT値 ' + bt + '（' + dateStr + '）を削除しますか？')) return;
     sowNo = String(sowNo);
     Breeding.removeBTLocal(sowNo, dateStr, bt);
     Breeding.render();
     App.toast('削除しました');
     OfflineSync.enqueue('deleteBreedingRecord', [sowNo, dateStr, '', bt, '']);
+  }
+};
+
+/** 種付日を0日齢として、当日〜14日前の精液採取日を選ぶ。 */
+var SemenCollection = {
+  MAX_AGE: 14,
+
+  parseIso: function(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    if (!m) return null;
+    var year = Number(m[1]);
+    var month = Number(m[2]);
+    var day = Number(m[3]);
+    var ms = Date.UTC(year, month - 1, day);
+    var d = new Date(ms);
+    if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null;
+    return ms;
+  },
+
+  formatIso: function(ms) {
+    var d = new Date(ms);
+    var month = d.getUTCMonth() + 1;
+    var day = d.getUTCDate();
+    return d.getUTCFullYear() + '-' + (month < 10 ? '0' : '') + month + '-' + (day < 10 ? '0' : '') + day;
+  },
+
+  addDays: function(iso, days) {
+    var ms = SemenCollection.parseIso(iso);
+    if (ms === null || !isFinite(Number(days))) return '';
+    return SemenCollection.formatIso(ms + Number(days) * 86400000);
+  },
+
+  datesForMating: function(matingDate) {
+    var list = [];
+    for (var age = 0; age <= SemenCollection.MAX_AGE; age++) {
+      var date = SemenCollection.addDays(matingDate, -age);
+      if (!date) return [];
+      list.push({
+        ageDays: age,
+        date: date,
+        label: age === 0 ? '当日' : (age + '日前')
+      });
+    }
+    return list;
+  },
+
+  toastSuffix: function(meta) {
+    if (!meta || !meta.semenCollectionDate) return '';
+    return '（精液' + meta.semenAgeDays + '日齢・採取' + String(meta.semenCollectionDate).slice(5) + '）';
+  },
+
+  renderHtml: function(matingDate, selectedAge) {
+    var dates = SemenCollection.datesForMating(matingDate);
+    if (!dates.length) {
+      return '<div class="semen-summary">種付日を選ぶと、採取日をボタンで選べます</div>';
+    }
+    var selected = null;
+    if (selectedAge === 0 || (selectedAge !== null && selectedAge !== undefined && selectedAge !== '')) {
+      selected = Number(selectedAge);
+    }
+    if (selected !== null && (isNaN(selected) || selected < 0 || selected > SemenCollection.MAX_AGE)) selected = null;
+    var summary = '未選択（空欄のまま記録できます）';
+    if (selected !== null) summary = '採取 ' + dates[selected].date + '（' + selected + '日齢）';
+    var html = '<div class="semen-summary">' + summary + '</div>';
+    for (var i = 0; i < dates.length; i++) {
+      var item = dates[i];
+      var on = selected === item.ageDays;
+      html += '<button type="button" class="semen-chip' + (on ? ' selected' : '') + '" data-age="' + item.ageDays + '">';
+      html += item.label + '<small>' + item.date.slice(5).replace('-', '/') + '・' + item.ageDays + '日齢</small>';
+      html += '</button>';
+    }
+    return html;
+  },
+
+  mount: function(containerId, matingDate, selectedAge) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    var dates = SemenCollection.datesForMating(matingDate);
+    var age = null;
+    if (selectedAge === 0 || (selectedAge !== null && selectedAge !== undefined && selectedAge !== '')) {
+      age = Number(selectedAge);
+    }
+    if (!dates.length || age === null || isNaN(age) || age < 0 || age > SemenCollection.MAX_AGE) age = null;
+    container.setAttribute('data-mating-date', dates.length ? String(matingDate) : '');
+    container.setAttribute('data-age-days', age === null ? '' : String(age));
+    container.innerHTML = SemenCollection.renderHtml(matingDate, age);
+  },
+
+  read: function(containerId) {
+    var container = document.getElementById(containerId);
+    if (!container) return null;
+    var ageAttr = container.getAttribute('data-age-days');
+    if (ageAttr === null || ageAttr === '') return null;
+    var age = Number(ageAttr);
+    var mating = container.getAttribute('data-mating-date') || '';
+    var date = SemenCollection.addDays(mating, -age);
+    if (!date || age < 0 || age > SemenCollection.MAX_AGE || Math.floor(age) !== age) return null;
+    return { semenCollectionDate: date, semenAgeDays: age };
+  },
+
+  bind: function(containerId, dateInputId) {
+    var container = document.getElementById(containerId);
+    var input = document.getElementById(dateInputId);
+    if (!container || container.getAttribute('data-semen-bound') === '1') return;
+    container.setAttribute('data-semen-bound', '1');
+    container.addEventListener('click', function(e) {
+      var node = e.target;
+      var btn = null;
+      while (node && node !== container) {
+        if (node.getAttribute && node.getAttribute('data-age') !== null) { btn = node; break; }
+        node = node.parentNode;
+      }
+      if (!btn) return;
+      var age = Number(btn.getAttribute('data-age'));
+      var current = container.getAttribute('data-age-days');
+      var next = current !== '' && Number(current) === age ? null : age;
+      var mating = input ? input.value : container.getAttribute('data-mating-date');
+      SemenCollection.mount(containerId, mating, next);
+    });
+    if (input && input.getAttribute('data-semen-bound') !== '1') {
+      input.setAttribute('data-semen-bound', '1');
+      var sync = function() {
+        var selected = container.getAttribute('data-age-days');
+        SemenCollection.mount(containerId, input.value, selected === '' || selected === null ? null : Number(selected));
+      };
+      input.addEventListener('change', sync);
+      input.addEventListener('input', sync);
+    }
   }
 };

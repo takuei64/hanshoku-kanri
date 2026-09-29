@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'breeding-pwa-v138-history-1';
+const CACHE_NAME = 'breeding-pwa-v139-semen-age';
 const BASE_PATH = '/hanshoku-kanri/';
 const APP_SHELL = [
   BASE_PATH,

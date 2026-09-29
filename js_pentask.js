@@ -125,8 +125,10 @@ var PenTask = {
     var types = [];
     for (var i = 0; i < checks.length; i++) types.push(checks[i].value);
     if (types.length === 0) { App.toast('作業を1つ以上選択してください'); return; }
+    if (!App.tryAction('pentask-submit:' + penNo)) return;
 
     App.hideModal('pentask-modal');
+    App.armTapShield(400);
     for (var p = 0; p < PenTask.list.length; p++) {
       if (String(PenTask.list[p].penNo) !== String(penNo)) continue;
       for (var j = 0; j < types.length; j++) {
@@ -142,7 +144,7 @@ var PenTask = {
 
   undo: function(type, dateStr) {
     var penNo = PenTask.selectedPen;
-    if (!confirm(type + ' (' + dateStr + ') を取り消しますか？')) return;
+    if (!App.confirmAction(type + ' (' + dateStr + ') を取り消しますか？')) return;
     for (var i = 0; i < PenTask.list.length; i++) {
       if (String(PenTask.list[i].penNo) !== String(penNo)) continue;
       var t = PenTask.list[i].tasks[type];

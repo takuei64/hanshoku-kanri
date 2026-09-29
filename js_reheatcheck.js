@@ -36,10 +36,12 @@ var ReheatCheck = {
   },
 
   confirmDone: function(sowNo) {
+    if (!App.tryAction('reheat-done:' + sowNo)) return;
     var el = document.getElementById('reheat-' + sowNo);
     if (el) el.style.opacity = '0.4';
 
     ReheatCheck.removeLocal(sowNo);
+    App.armTapShield(400);
     App.toast('確認済 No.' + sowNo);
     OfflineSync.enqueue('recordStatusChange', [sowNo, '再発情確認終了', App.today()]);
   }

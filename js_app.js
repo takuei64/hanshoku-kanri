@@ -76,24 +76,34 @@ var App = {
       App.toast('未送信記録があります。同期後に更新してください');
       return;
     }
+    if (!App.tryAction('app-refresh', 800)) return;
+    var epoch = typeof PwaShell !== 'undefined' ? PwaShell.localEpoch : 0;
     App.showLoading();
     google.script.run
       .withSuccessHandler(function(data) {
-        Breeding.list = data.morningList || [];
-        PostMating.list = data.postMatingList || [];
-        Farrowing.list = data.farrowingList || [];
-        Farrowing.accidentList = data.accidentList || [];
-        SowLocation.list = data.locationList || [];
-        ReheatCheck.list = data.reheatCheckList || [];
-        PregCheck.list = data.pregnancyCheckList || [];
-        PenTask.list = data.penTaskList || [];
         App.hideLoading();
-        // 現在のページを再描画
-        if (App.currentPage === 'breeding') Breeding.render();
-        if (App.currentPage === 'pregcheck') PregCheck.render();
-        if (App.currentPage === 'farrowing') { Farrowing.render(); Farrowing.renderAccidents(); }
-        if (App.currentPage === 'location') SowLocation.render();
-        if (App.currentPage === 'pentask') PenTask.render();
+        // 通信中に削除や入力が入った場合、戻りの古い一覧で楽観的更新を潰さない。
+        if (typeof PwaShell !== 'undefined' && !PwaShell.shouldApplyServerData(epoch)) {
+          App.toast('未送信の入力があるため、一覧の上書きを止めました');
+          return false;
+        }
+        if (typeof PwaShell !== 'undefined' && PwaShell.applyData) {
+          PwaShell.applyData(data);
+        } else {
+          Breeding.list = data.morningList || [];
+          PostMating.list = data.postMatingList || [];
+          Farrowing.list = data.farrowingList || [];
+          Farrowing.accidentList = data.accidentList || [];
+          SowLocation.list = data.locationList || [];
+          ReheatCheck.list = data.reheatCheckList || [];
+          PregCheck.list = data.pregnancyCheckList || [];
+          PenTask.list = data.penTaskList || [];
+          if (App.currentPage === 'breeding') Breeding.render();
+          if (App.currentPage === 'pregcheck') PregCheck.render();
+          if (App.currentPage === 'farrowing') { Farrowing.render(); Farrowing.renderAccidents(); }
+          if (App.currentPage === 'location') SowLocation.render();
+          if (App.currentPage === 'pentask') PenTask.render();
+        }
         App.toast('更新しました');
       })
       .withFailureHandler(function(e) {
@@ -123,6 +133,38 @@ var App = {
     setTimeout(function() { el.classList.remove('show'); }, 2500);
   },
 
+  tapShieldUntil: 0,
+  actionGuards: {},
+
+  /** 確認ダイアログを閉じた指が、直下の別ボタンを押すのを短時間だけ止める。 */
+  armTapShield: function(ms) {
+    App.tapShieldUntil = Date.now() + (ms || 400);
+  },
+
+  tapShielded: function() {
+    return Date.now() < App.tapShieldUntil;
+  },
+
+  /**
+   * 同じキーの連打だけを閉じる。別の母豚や精液チップの操作は止めない。
+   * ネイティブconfirmの待ち時間には使わない（確認が終わるまでロックが溶けてしまう）。
+   */
+  tryAction: function(key, ms) {
+    if (App.tapShielded()) return false;
+    if (App.actionGuards[key]) return false;
+    App.actionGuards[key] = true;
+    setTimeout(function() { delete App.actionGuards[key]; }, ms || 450);
+    return true;
+  },
+
+  /** 削除確認のあと、ダイアログを閉じたタップが残っているボタンに落ちないようにする。 */
+  confirmAction: function(message) {
+    if (App.tapShielded()) return false;
+    if (!confirm(message)) return false;
+    App.armTapShield(450);
+    return true;
+  },
+
   isFormField: function(el) {
     return el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName);
   },
@@ -135,7 +177,12 @@ var App = {
   prepareActionTap: function(e) {
     var target = e.target;
     if (App.isFormField(target)) return;
-    if (target && target.closest && target.closest('button,[onclick],.tab-bar button,.section-toggle,.list-item,.pen-tap,.bt-chip,.tl-delete')) {
+    if (e.type === 'click' && App.tapShielded()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (target && target.closest && target.closest('button,[onclick],.tab-bar button,.section-toggle,.list-item,.pen-tap,.bt-chip,.tl-delete,.pt-undo')) {
       App.blurActiveElement();
     }
   },

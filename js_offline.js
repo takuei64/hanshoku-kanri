@@ -12,8 +12,11 @@ var OfflineSync = {
 
   init: function() {
     if (OfflineSync.initialized) return;
+    var storedQueue = null;
+    try { storedQueue = localStorage.getItem(OfflineSync.storageKey); } catch (e) {}
     OfflineSync.queue = OfflineSync.loadQueue();
     OfflineSync.initialized = true;
+    if (storedQueue !== JSON.stringify(OfflineSync.queue)) OfflineSync.saveQueue();
 
     window.addEventListener('online', function() {
       OfflineSync.retryPendingNow();
@@ -23,7 +26,8 @@ var OfflineSync = {
     });
     window.addEventListener('storage', function(e) {
       if (e.key !== OfflineSync.storageKey || OfflineSync.sending) return;
-      OfflineSync.queue = OfflineSync.loadQueue();
+      // 他画面が送信中の操作を pending に戻すと、同じ削除が二重に飛ぶ。
+      OfflineSync.queue = OfflineSync.loadQueue({ resetSending: false });
       OfflineSync.updateStatus();
       OfflineSync.process();
     });
@@ -36,22 +40,31 @@ var OfflineSync = {
     setInterval(function() { OfflineSync.process(); }, 30000);
   },
 
-  loadQueue: function() {
+  loadQueue: function(options) {
+    var resetSending = !options || options.resetSending !== false;
     try {
       var raw = localStorage.getItem(OfflineSync.storageKey);
       var list = raw ? JSON.parse(raw) : [];
       if (!Array.isArray(list)) return [];
+      var kept = [];
       for (var i = 0; i < list.length; i++) {
-        // 送信途中でアプリが閉じられた記録は、再起動後に再送する。
-        if (list[i].state === 'sending') list[i].state = 'pending';
+        // 先に消えていた削除は、再起動後も「要確認」のまま残さない。
+        if (list[i].state === 'failed' && OfflineSync.isAlreadyDeletedFailure(list[i], list[i].error)) continue;
+        if (list[i].state === 'sending') {
+          // 起動時は途中送信を再送する。他画面の新しい送信中は奪わない。
+          var sendAge = Date.now() - Number(list[i].sendingAt || 0);
+          var staleSend = !!list[i].sendingAt && sendAge > 30000;
+          if (resetSending || staleSend) list[i].state = 'pending';
+        }
         // 再ログイン後は新しい認証トークンで自動再送する。
         if (list[i].state === 'failed' && String(list[i].error || '').indexOf('認証が切れました') >= 0) {
           list[i].state = 'pending';
           list[i].attempts = 0;
           list[i].nextAttemptAt = 0;
         }
+        kept.push(list[i]);
       }
-      return list;
+      return kept;
     } catch (e) {
       OfflineSync.storageAvailable = false;
       return [];
@@ -76,7 +89,58 @@ var OfflineSync = {
     return 'op-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2) + '-' + Math.random().toString(36).slice(2);
   },
 
-  enqueue: function(type, args, handlers) {
+  isDeleteOperation: function(type) {
+    return /^delete/.test(String(type || ''));
+  },
+
+  deleteKey: function(type, args) {
+    if (!OfflineSync.isDeleteOperation(type)) return '';
+    var list = args || [];
+    var parts = [String(type)];
+    for (var i = 0; i < list.length; i++) parts.push(String(list[i]));
+    return parts.join('\n');
+  },
+
+  findActiveDuplicate: function(type, args) {
+    var key = OfflineSync.deleteKey(type, args);
+    if (!key) return null;
+    for (var i = 0; i < OfflineSync.queue.length; i++) {
+      var op = OfflineSync.queue[i];
+      if (op.state === 'failed') continue;
+      if (OfflineSync.deleteKey(op.type, op.args) === key) return op;
+    }
+    return null;
+  },
+
+  /**
+   * 同じ削除を続けて送ると、2件目はサーバーが「該当する記録が見つかりません」と返す。
+   * シート自体が無い場合は文言が違うので、成功にはしない。
+   */
+  isAlreadyDeletedFailure: function(op, error) {
+    if (!op || !OfflineSync.isDeleteOperation(op.type)) return false;
+    return /^該当する(種付|分娩|離乳)?記録が見つかりません$/.test(String(error || '').trim());
+  },
+
+  acceptQueuedResult: function(op, res) {
+    return !!(res && res.success) || OfflineSync.isAlreadyDeletedFailure(op, res && res.error);
+  },
+
+  normalizeSemenMeta: function(meta) {
+    if (!meta) return null;
+    var date = String(meta.semenCollectionDate || '');
+    var age = Number(meta.semenAgeDays);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+    if (!isFinite(age) || age < 0 || age > 14 || Math.floor(age) !== age) return null;
+    return { semenCollectionDate: date, semenAgeDays: age };
+  },
+
+  enqueue: function(type, args, handlers, meta) {
+    var duplicate = OfflineSync.findActiveDuplicate(type, args || []);
+    if (duplicate) {
+      OfflineSync.lastDuplicate = true;
+      return duplicate.id;
+    }
+    OfflineSync.lastDuplicate = false;
     var op = {
       id: OfflineSync.createId(),
       type: type,
@@ -87,6 +151,11 @@ var OfflineSync = {
       state: 'pending',
       error: ''
     };
+    var semen = type === 'recordMating' ? OfflineSync.normalizeSemenMeta(meta) : null;
+    if (semen) {
+      op.semenCollectionDate = semen.semenCollectionDate;
+      op.semenAgeDays = semen.semenAgeDays;
+    }
     OfflineSync.queue.push(op);
     OfflineSync.callbacks[op.id] = handlers || {};
     if (!OfflineSync.saveQueue() && typeof App !== 'undefined') {
@@ -235,6 +304,7 @@ var OfflineSync = {
 
     OfflineSync.sending = true;
     op.state = 'sending';
+    op.sendingAt = Date.now();
     OfflineSync.saveQueue();
     OfflineSync.updateStatus();
 
@@ -244,11 +314,23 @@ var OfflineSync = {
       OfflineSync.retryOperation(op, sendToken, '応答待ちがタイムアウトしました');
     }, 25000);
 
+    // args は従来どおり。精液採取日は任意プロパティなので、未対応の保存処理でも種付自体は送れる。
+    var payload = {
+      id: op.id,
+      type: op.type,
+      args: op.args,
+      createdAt: op.createdAt
+    };
+    if (op.semenCollectionDate) {
+      payload.semenCollectionDate = op.semenCollectionDate;
+      payload.semenAgeDays = op.semenAgeDays;
+    }
+
     google.script.run
       .withSuccessHandler(function(res) {
         if (OfflineSync.activeSendToken !== sendToken) return;
         clearTimeout(timeoutId);
-        if (res && res.success) {
+        if (OfflineSync.acceptQueuedResult(op, res)) {
           OfflineSync.completeOperation(op, sendToken, res);
         } else if (res && res.retryable) {
           OfflineSync.retryOperation(op, sendToken, res.error || '一時的な保存エラー');
@@ -261,12 +343,7 @@ var OfflineSync = {
         clearTimeout(timeoutId);
         OfflineSync.retryOperation(op, sendToken, OfflineSync.errorText(e));
       })
-      .executeQueuedOperation({
-        id: op.id,
-        type: op.type,
-        args: op.args,
-        createdAt: op.createdAt
-      }, App.authToken);
+      .executeQueuedOperation(payload, App.authToken);
   },
 
   completeOperation: function(op, sendToken, result) {
@@ -347,6 +424,10 @@ var OfflineSync = {
     var target = op.type === 'recordPenTasks' || op.type === 'deletePenTask'
       ? 'Pen ' + String(args[0] || '')
       : 'No.' + String(args[0] || '');
-    return (labels[op.type] || op.type || '記録') + ' ' + target;
+    var text = (labels[op.type] || op.type || '記録') + ' ' + target;
+    if (op.type === 'recordMating' && op.semenCollectionDate) {
+      text += ' 精液' + op.semenAgeDays + '日齢';
+    }
+    return text;
   }
 };

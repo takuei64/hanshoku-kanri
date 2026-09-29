@@ -5,6 +5,9 @@
   var originalEnqueue = OfflineSync.enqueue;
   OfflineSync.enqueue = function() {
     var operationId = originalEnqueue.apply(OfflineSync, arguments);
+    if (!OfflineSync.lastDuplicate && typeof PwaShell !== 'undefined' && PwaShell.noteLocalChange) {
+      PwaShell.noteLocalChange();
+    }
     setTimeout(function() { PwaStore.captureCurrentData(); }, 0);
     return operationId;
   };
