@@ -417,9 +417,9 @@ var OfflineSync = {
     }, 25000);
 
     // 採取日が無くても args は2つのまま送る。未選択を理由に種付は止めない。
-    // サーバーの ensureMatingSemenHeaders_ は E1 が空のときだけ見出しを書く。
-    // getRange(1, 5, 1, 6) は6列範囲なので、空のE1だと2列の見出し書き込みで種付全体が失敗する。
-    // 正しくは getRange(1, 5, 1, 2)。このリポジトリから本番GASは更新しない。
+    // 種付失敗の主因は本番GAS api_breeding.js の ensureMatingSemenHeaders_。
+    // getRange(1, 5, 1, 6) は第4引数が列数なので E〜J の6列になり、2列の見出しで例外になる。
+    // 正しいのは getRange(1, 5, 1, 2) または getRange('E1:F1')。本番GASはこのリポジトリ外で直す。
     var payload = {
       id: op.id,
       type: op.type,

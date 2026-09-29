@@ -46,11 +46,18 @@ Apps Script「生産管理_協和資糧」の Web アプリ URL は、別物の�
 
 種付の `args` は `[母豚No, 種付日]` の2つのままです。採取日を選ばなくても種付自体は送ります。選んだときだけ `semenCollectionDate` と `semenAgeDays` を足します。
 
-サーバーの `ensureMatingSemenHeaders_` は、種付シートの E1 が空のときだけ見出しを書きます。`getRange(1, 5, 1, 6)` は1行6列なので、2列の見出しを書くと例外になり、その種付はシートに残りません。E1 に見出しがあるあいだはそこを通りません。見出しを空に戻す前に、次へ直してからデプロイしてください。
+種付がシートに残らず「要確認」が増えた主因は、本番GAS `api_breeding.js` の `ensureMatingSemenHeaders_` です。次の呼び出しは、Apps Script の `getRange(row, column, numRows, numColumns)` では第4引数が列数なので、E〜J の6列に2列データを書いて例外になります。種付のたびに失敗し、キューが failed になります。削除修正が効いていないように見えたのも、種付行自体が残っていなかったためです。
 
 ```javascript
+// 誤り: E1 から6列
+sheet.getRange(1, 5, 1, 6).setValues([['精液採取日', '精液日齢']]);
+
+// 正しい
 sheet.getRange(1, 5, 1, 2).setValues([['精液採取日', '精液日齢']]);
+// または sheet.getRange('E1:F1').setValues([['精液採取日', '精液日齢']]);
 ```
+
+この関数の本体はリポジトリにありません。本番GAS側で上の正しい範囲に直して再デプロイします。岡山版は対象外です。
 
 ## 要確認が残ったとき
 
