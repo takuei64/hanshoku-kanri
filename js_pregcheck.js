@@ -36,7 +36,12 @@ var PregCheck = {
 
   confirm: function(sowNo, status) {
     var el = document.getElementById('preg-' + sowNo);
-    if (el) el.style.opacity = '0.4';
+    if (el && el.getAttribute('data-busy') === '1') return;
+    if (!App.tryAction('preg:' + sowNo)) return;
+    if (el) {
+      el.setAttribute('data-busy', '1');
+      el.style.opacity = '0.4';
+    }
     var pregRow = null;
     for (var i = 0; i < PregCheck.list.length; i++) {
       if (String(PregCheck.list[i].sowNo) === String(sowNo)) {

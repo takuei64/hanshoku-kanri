@@ -32,10 +32,12 @@ var PostMating = {
   },
 
   confirmDone: function(sowNo) {
+    if (!App.tryAction('post-done:' + sowNo)) return;
     var el = document.getElementById('postmating-' + sowNo);
     if (el) el.style.opacity = '0.4';
 
     PostMating.removeLocal(sowNo);
+    App.armTapShield(400);
     App.toast('測定終了 No.' + sowNo);
     OfflineSync.enqueue('recordStatusChange', [sowNo, '種付後測定終了', App.today()]);
   }

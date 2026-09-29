@@ -250,12 +250,16 @@
 
 <!-- 種付登録モーダル（現在地・個体タブ用） -->
 <div class="modal-overlay" id="mating-modal">
-  <div class="modal-content" style="position:relative">
+  <div class="modal-content modal-tall" style="position:relative">
     <button class="modal-close" onclick="App.hideModal('mating-modal')">&times;</button>
     <div class="modal-title">種付登録 <span id="mating-sow-label"></span></div>
     <div class="form-group">
-      <label>日付</label>
+      <label>種付日</label>
       <input type="date" id="mating-date">
+    </div>
+    <div class="semen-block" id="mating-semen-block">
+      <div class="semen-help">精液の採取日（種付日が0日齢。当日〜14日前）</div>
+      <div id="mating-semen-chips" class="semen-chips"></div>
     </div>
     <button class="submit-btn" onclick="Mating.submit()">記録する</button>
   </div>
@@ -263,12 +267,16 @@
 
 <!-- 種付・ステータス変更モーダル -->
 <div class="modal-overlay" id="status-modal">
-  <div class="modal-content" style="position:relative">
+  <div class="modal-content modal-tall" style="position:relative">
     <button class="modal-close" onclick="App.hideModal('status-modal')">&times;</button>
     <div class="modal-title" id="status-modal-title"></div>
     <div class="form-group">
       <label>日付</label>
       <input type="date" id="status-date">
+    </div>
+    <div class="semen-block" id="status-semen-block" hidden>
+      <div class="semen-help">精液の採取日（種付日が0日齢。当日〜14日前）</div>
+      <div id="status-semen-chips" class="semen-chips"></div>
     </div>
     <p id="status-modal-desc" style="font-size:13px;color:var(--text-sub);margin-bottom:16px;text-align:center"></p>
     <button class="submit-btn" id="status-modal-submit" onclick="Breeding.confirmStatus()">記録する</button>

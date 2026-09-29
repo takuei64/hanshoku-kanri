@@ -229,13 +229,15 @@
       delete PwaJsonp.calls[requestId];
 
       if (ok) {
-        if (call.method === 'refreshAllData' || call.method === 'getInitialDataCached') {
+        var rejected = false;
+        if (call.success) rejected = call.success(result) === false;
+        // 通信中の削除を古い一覧で上書きしない。拒否した応答は端末のスナップショットにも残さない。
+        if (!rejected && (call.method === 'refreshAllData' || call.method === 'getInitialDataCached')) {
           PwaStore.saveSnapshot(result);
         }
-        if (call.method === 'getSowCard' && call.args.length) {
+        if (!rejected && call.method === 'getSowCard' && call.args.length) {
           PwaStore.saveCard(call.args[0], result);
         }
-        if (call.success) call.success(result);
       } else if (call.failure) {
         call.failure({ message: error || '通信エラー' });
       }
@@ -261,6 +263,17 @@
   var PwaShell = {
     gate: null,
     refreshing: false,
+    localEpoch: 0,
+
+    noteLocalChange: function() {
+      PwaShell.localEpoch++;
+    },
+
+    shouldApplyServerData: function(epochAtRequest) {
+      if (epochAtRequest !== PwaShell.localEpoch) return false;
+      if (typeof OfflineSync !== 'undefined' && OfflineSync.hasPending && OfflineSync.hasPending()) return false;
+      return true;
+    },
 
     ensureGate: function() {
       if (PwaShell.gate || !document.body) return;
@@ -328,8 +341,13 @@
       }
       PwaShell.refreshing = true;
       if (firstSetup || !PwaStore.hasSnapshot()) PwaShell.showFirstUseGate(true);
+      var epoch = PwaShell.localEpoch;
       PwaJsonp.call('getInitialDataCached', [token], function(data) {
         PwaShell.refreshing = false;
+        if (!PwaShell.shouldApplyServerData(epoch)) {
+          if (PwaStore.hasSnapshot()) PwaShell.hideGate();
+          return false;
+        }
         PwaShell.applyData(data);
         PwaShell.hideGate();
         if (firstSetup && typeof App !== 'undefined') App.toast('オフライン準備が完了しました');

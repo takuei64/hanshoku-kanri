@@ -77,7 +77,7 @@ var SowLocation = {
   actionRetire: function() {
     App.hideModal('loc-action-sheet');
     var sowNo = SowLocation.actionSowNo;
-    if (!confirm('No.' + sowNo + ' を廃用にしますか？')) return;
+    if (!App.confirmAction('No.' + sowNo + ' を廃用にしますか？')) return;
     SowLocation.removeSowLocal(sowNo);
     OfflineSync.enqueue('recordStatusChange', [sowNo, '廃用', App.today()]);
     App.toast('廃用を記録しました');
@@ -165,9 +165,11 @@ var SowLocation = {
     var count = parseInt(document.getElementById('death-count').value) || 0;
 
     if (count <= 0) { App.toast('頭数を入力してください'); return; }
+    if (!App.tryAction('death-submit')) return;
 
     OfflineSync.enqueue('recordNursingAccident', [sowNo, dateStr, count]);
     App.hideModal('death-modal');
+    App.armTapShield(400);
     Farrowing.accidentList.unshift({ sowNo: sowNo, date: dateStr, count: count });
     App.toast('子豚死亡を登録しました');
   },
@@ -184,8 +186,10 @@ var SowLocation = {
     var penNo = document.getElementById('loc-move-pen').value.trim();
     var dateStr = document.getElementById('loc-move-date').value;
     if (!penNo) { App.toast('ペンNoを入力してください'); return; }
+    if (!App.tryAction('loc-move-submit')) return;
 
     App.hideModal('loc-move-modal');
+    App.armTapShield(400);
     var sowNo = SowLocation.moveSowNo;
 
     for (var i = 0; i < SowLocation.list.length; i++) {
@@ -202,6 +206,16 @@ var SowLocation = {
 
 // === 画面3: 個体カード ===
 var SowCard = {
+  searchSeq: 0,
+  localRevision: 0,
+  currentData: null,
+
+  esc: function(value) {
+    return String(value === null || value === undefined ? '' : value).replace(/[&<>"']/g, function(c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  },
+
   search: function(sowNo) {
     if (!sowNo) {
       sowNo = parseInt(document.getElementById('card-search-input').value);
@@ -210,9 +224,15 @@ var SowCard = {
     }
     if (!sowNo) { App.toast('母豚番号を入力してください'); return; }
 
+    var seq = ++SowCard.searchSeq;
+    var revision = SowCard.localRevision;
     App.showLoading();
     google.script.run
       .withSuccessHandler(function(data) {
+        if (seq !== SowCard.searchSeq || revision !== SowCard.localRevision) {
+          if (seq === SowCard.searchSeq) App.hideLoading();
+          return false;
+        }
         App.hideLoading();
         if (data.error) {
           App.toast(data.error);
@@ -223,13 +243,16 @@ var SowCard = {
         SowCard.render(data);
       })
       .withFailureHandler(function(e) {
+        if (seq !== SowCard.searchSeq) return;
         App.hideLoading();
+        if (revision !== SowCard.localRevision) return;
         App.toast('エラー: ' + e.message);
       })
       .getSowCard(sowNo, App.authToken);
   },
 
   render: function(data) {
+    SowCard.currentData = data;
     var c = document.getElementById('card-result');
     var html = '';
 
@@ -259,6 +282,9 @@ var SowCard = {
         html += '<div class="tl-date">' + (t.date || '') + '</div>';
         html += '<span class="tl-event" style="background:' + color + '">' + t.event + '</span>';
         if (t.detail) html += '<span class="tl-detail">' + t.detail + '</span>';
+        if (t.event === '種付' && t.semenCollectionDate && String(t.detail || '').indexOf('精液') < 0) {
+          html += '<span class="tl-detail">精液' + SowCard.esc(t.semenAgeDays) + '日齢（採取 ' + SowCard.esc(t.semenCollectionDate) + '）</span>';
+        }
         if (t.event === '繁殖管理') {
           html += '<span class="tl-delete" onclick="SowCard.confirmDelete(\'' + data.info.sowNo + '\',\'' + (t.date || '') + '\',\'' + (t._penNo || '') + '\',\'' + (t._bt || '') + '\',\'' + (t._status || '') + '\')">&times;</span>';
         }
@@ -286,12 +312,33 @@ var SowCard = {
     }
   },
 
+  /** サーバーと同じく、同じ条件の行は末尾から1件だけ画面から外す。 */
+  removeLastMatch: function(sowNo, match) {
+    SowCard.localRevision++;
+    var data = SowCard.currentData;
+    if (!data || !data.timeline || !data.info || String(data.info.sowNo) !== String(sowNo)) return;
+    for (var i = data.timeline.length - 1; i >= 0; i--) {
+      if (match(data.timeline[i])) {
+        data.timeline.splice(i, 1);
+        break;
+      }
+    }
+    if (typeof PwaStore !== 'undefined' && PwaStore.saveCard) PwaStore.saveCard(sowNo, data);
+    SowCard.render(data);
+  },
+
   confirmDelete: function(sowNo, dateStr, penNo, bt, status) {
     var desc = [];
     if (penNo) desc.push('Pen ' + penNo);
     if (bt) desc.push('BT ' + bt);
     if (status) desc.push(status);
-    if (!confirm(dateStr + '「' + desc.join(' / ') + '」を削除しますか？')) return;
+    if (!App.confirmAction(dateStr + '「' + desc.join(' / ') + '」を削除しますか？')) return;
+    SowCard.removeLastMatch(sowNo, function(t) {
+      return t.event === '繁殖管理' && String(t.date || '') === String(dateStr) &&
+        String(t._penNo || '') === String(penNo || '') &&
+        String(t._bt || '') === String(bt || '') &&
+        String(t._status || '') === String(status || '');
+    });
 
     OfflineSync.enqueue('deleteBreedingRecord', [sowNo, dateStr, penNo, bt || '', status], {
       onSuccess: function() { SowCard.refreshIfVisible(sowNo); }
@@ -300,7 +347,10 @@ var SowCard = {
   },
 
   confirmDeleteMating: function(sowNo, dateStr) {
-    if (!confirm(dateStr + ' の種付記録を削除しますか？')) return;
+    if (!App.confirmAction(dateStr + ' の種付記録を削除しますか？')) return;
+    SowCard.removeLastMatch(sowNo, function(t) {
+      return t.event === '種付' && String(t.date || '') === String(dateStr);
+    });
     OfflineSync.enqueue('deleteMatingRecord', [sowNo, dateStr], {
       onSuccess: function() { SowCard.refreshIfVisible(sowNo); }
     });
@@ -308,7 +358,12 @@ var SowCard = {
   },
 
   confirmDeleteFarrowing: function(sowNo, dateStr, total, still) {
-    if (!confirm(dateStr + ' の分娩記録を削除しますか？')) return;
+    if (!App.confirmAction(dateStr + ' の分娩記録を削除しますか？')) return;
+    SowCard.removeLastMatch(sowNo, function(t) {
+      return t.event === '分娩' && String(t.date || '') === String(dateStr) &&
+        String(t._total || '') === String(total || '') &&
+        String(t._still || '') === String(still || '');
+    });
     OfflineSync.enqueue('deleteFarrowingRecord', [sowNo, dateStr, total, still], {
       onSuccess: function() { SowCard.refreshIfVisible(sowNo); }
     });
@@ -316,7 +371,12 @@ var SowCard = {
   },
 
   confirmDeleteWeaning: function(sowNo, dateStr, weaned, deaths) {
-    if (!confirm(dateStr + ' の離乳記録を削除しますか？')) return;
+    if (!App.confirmAction(dateStr + ' の離乳記録を削除しますか？')) return;
+    SowCard.removeLastMatch(sowNo, function(t) {
+      return t.event === '離乳' && String(t.date || '') === String(dateStr) &&
+        String(t._weaned || '') === String(weaned || '') &&
+        String(t._deaths || '') === String(deaths || '');
+    });
     OfflineSync.enqueue('deleteWeaningRecord', [sowNo, dateStr, weaned, deaths], {
       onSuccess: function() { SowCard.refreshIfVisible(sowNo); }
     });
@@ -332,18 +392,28 @@ var Mating = {
     Mating.sowNo = sowNo;
     document.getElementById('mating-sow-label').textContent = 'No.' + sowNo;
     App.setDateDefault('mating-date');
+    SemenCollection.bind('mating-semen-chips', 'mating-date');
+    SemenCollection.mount('mating-semen-chips', document.getElementById('mating-date').value, null);
     App.showModal('mating-modal');
   },
 
   submit: function() {
+    if (App.tapShielded()) return;
     var sowNo = Mating.sowNo;
     var dateStr = document.getElementById('mating-date').value;
     if (!sowNo) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || ''))) {
+      App.toast('種付日を確認してください');
+      return;
+    }
+    if (!App.tryAction('mating-submit')) return;
+    var meta = SemenCollection.read('mating-semen-chips');
 
     App.hideModal('mating-modal');
-    App.toast('種付を記録しました');
+    App.armTapShield(400);
+    App.toast('種付を記録しました' + SemenCollection.toastSuffix(meta));
     OfflineSync.enqueue('recordMating', [sowNo, dateStr], {
       onSuccess: function() { SowCard.refreshIfVisible(sowNo); }
-    });
+    }, meta);
   }
 };

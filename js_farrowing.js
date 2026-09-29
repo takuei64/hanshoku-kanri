@@ -68,8 +68,10 @@ var Farrowing = {
     var still = parseInt(document.getElementById('farrow-record-still').value) || 0;
 
     if (total <= 0) { App.toast('総産子数を入力してください'); return; }
+    if (!App.tryAction('farrow-record:' + sowNo)) return;
 
     App.hideModal('farrow-record-modal');
+    App.armTapShield(400);
     App.toast('分娩を記録しました');
     OfflineSync.enqueue('recordFarrowing', [sowNo, dateStr, total, still]);
   },
@@ -92,6 +94,7 @@ var Farrowing = {
 
     if (!sowNo) { App.toast('母豚Noを入力してください'); return; }
     if (count <= 0) { App.toast('頭数を入力してください'); return; }
+    if (!App.tryAction('accident-submit')) return;
 
     OfflineSync.enqueue('recordNursingAccident', [sowNo, dateStr, count]);
     document.getElementById('accident-sow').value = '';
@@ -120,8 +123,10 @@ var Farrowing = {
     var penNo = document.getElementById('farrow-move-pen').value.trim();
     var dateStr = document.getElementById('farrow-move-date').value;
     if (!penNo) { App.toast('移動先ペンNoを入力してください'); return; }
+    if (!App.tryAction('farrow-move:' + sowNo)) return;
 
     App.hideModal('farrow-move-modal');
+    App.armTapShield(400);
 
     for (var i = 0; i < Farrowing.list.length; i++) {
       if (String(Farrowing.list[i].sowNo) === String(sowNo)) {

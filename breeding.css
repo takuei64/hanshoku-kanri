@@ -351,17 +351,23 @@ body {
 .pen-tap:active { background: #c5daf5; }
 
 /* BT値チップ（タップ削除） */
-.bt-deletable { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.bt-deletable {
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  min-height: 40px; display: inline-flex; align-items: center;
+  padding: 8px 12px; font-size: 14px;
+}
 .bt-deletable:active { background: #fce8e6; color: var(--danger); }
 
 /* タイムライン削除ボタン */
 .tl-delete {
   margin-left: auto;
   color: var(--danger);
-  font-size: 18px; font-weight: 700;
-  cursor: pointer; padding: 4px 8px;
+  font-size: 22px; font-weight: 700;
+  cursor: pointer;
+  min-width: 44px; min-height: 44px;
+  display: inline-flex; align-items: center; justify-content: center;
   -webkit-tap-highlight-color: transparent;
-  opacity: 0.5;
+  opacity: 0.75;
 }
 .tl-delete:active { opacity: 1; }
 
@@ -451,10 +457,12 @@ body {
   width: 22px; height: 22px;
 }
 .pt-undo {
-  cursor: pointer; padding: 2px 8px;
+  cursor: pointer; padding: 8px 12px;
   background: #fce8e6; color: var(--danger);
-  border-radius: 4px; margin-left: 6px;
-  font-size: 11px;
+  border-radius: 8px; margin-left: 6px;
+  font-size: 14px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 44px; min-width: 44px;
 }
 
 /* セーフエリア対応 */
@@ -489,3 +497,44 @@ body {
 .history-details time { display: inline-block; min-width: 86px; color: #4e5660; font-variant-numeric: tabular-nums; }
 .history-note { color: #505862; font-size: 12px; line-height: 1.6; }
 .history-pending { color: #854100; font-size: 12px; margin-bottom: 5px; font-weight: bold; }
+
+.modal-content.modal-tall { max-height: 92vh; }
+.semen-block { margin-bottom: 12px; }
+.semen-help {
+  font-size: 14px; font-weight: 700; color: var(--text);
+  margin-bottom: 8px; line-height: 1.4;
+}
+.semen-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.semen-summary {
+  flex: 1 1 100%;
+  font-size: 15px; font-weight: 700; text-align: center;
+  padding: 4px 0 2px;
+}
+.semen-chip {
+  flex: 1 1 calc(33.33% - 8px);
+  min-width: 96px;
+  min-height: 64px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  padding: 8px 4px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.semen-chip small {
+  display: block;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-sub);
+  margin-top: 2px;
+}
+.semen-chip.selected {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.semen-chip.selected small { color: rgba(255,255,255,.92); }
