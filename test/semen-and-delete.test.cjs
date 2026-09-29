@@ -333,3 +333,84 @@ test('確認を閉じた直後のクリックは捨て、同じボタンの連�
   assert.equal(context.App.tryAction('preg:42'), false);
   assert.equal(context.App.tryAction('preg:43'), true);
 });
+
+test('同期処理の途中でも、句点付きの削除済み失敗は送らずに外す', function() {
+  const context = loadOffline();
+  context.OfflineSync.queue = [
+    { id: 'gone-live', type: 'deleteMatingRecord', args: ['9', '2026-09-01'], state: 'failed', error: 'Exception: 該当する種付記録が見つかりません。' },
+    { id: 'keep', type: 'deleteFarrowingRecord', args: ['9', '2026-09-01', '1', '0'], state: 'failed', error: '分娩シートが見つかりません' }
+  ];
+  context.OfflineSync.process();
+  assert.deepEqual(context.OfflineSync.queue.map(function(op) { return op.id; }), ['keep']);
+  assert.equal(context.__runner.payloads.length, 0);
+  assert.equal(context.OfflineSync.failedCount(), 1);
+});
+
+test('再送して「でした」付きでも削除済みは成功になり、空の応答は理由を残す', function() {
+  const context = loadOffline();
+  context.OfflineSync.enqueue('deleteWeaningRecord', ['3', '2026-09-01', '8', '0']);
+  flush(context);
+  context.__runner.success({ success: false, error: '該当する離乳記録が見つかりませんでした' });
+  assert.equal(context.OfflineSync.failedCount(), 0);
+  assert.equal(context.OfflineSync.queue.length, 0);
+
+  context.OfflineSync.enqueue('recordMating', ['3', '2026-09-29'], null, null);
+  flush(context);
+  const sent = context.__runner.payloads[context.__runner.payloads.length - 1];
+  assert.deepEqual(sent.args, ['3', '2026-09-29']);
+  assert.equal(Object.prototype.hasOwnProperty.call(sent, 'semenCollectionDate'), false);
+  context.__runner.success({ success: false });
+  assert.equal(context.OfflineSync.failedCount(), 1);
+  assert.match(context.OfflineSync.queue[0].error, /recordMating/);
+  assert.match(context.OfflineSync.queue[0].error, /応答/);
+  assert.match(context.__toasts.join('\n'), /要確認/);
+});
+
+test('同じ削除の失敗を押し直しても件数は増えず、削除済みなら捨てる', function() {
+  const context = loadOffline();
+  context.OfflineSync.queue = [{
+    id: 'old-fail',
+    type: 'deleteMatingRecord',
+    args: ['9', '2026-09-01'],
+    state: 'failed',
+    error: '権限がありません'
+  }];
+  const again = context.OfflineSync.enqueue('deleteMatingRecord', ['9', '2026-09-01']);
+  assert.equal(again, 'old-fail');
+  assert.equal(context.OfflineSync.queue.length, 1);
+  assert.equal(context.OfflineSync.queue[0].state, 'pending');
+  assert.equal(context.OfflineSync.queue[0].error, '');
+
+  context.OfflineSync.queue[0].state = 'failed';
+  context.OfflineSync.queue[0].error = '該当する種付記録が見つかりません。';
+  const dropped = context.OfflineSync.enqueue('deleteMatingRecord', ['9', '2026-09-01']);
+  assert.equal(dropped, 'old-fail');
+  assert.equal(context.OfflineSync.queue.length, 0);
+  assert.equal(context.OfflineSync.lastDuplicate, true);
+});
+
+test('要確認ダイアログは複数件の理由をまとめて出す', function() {
+  const context = loadOffline();
+  const seen = [];
+  context.confirm = function(message) {
+    seen.push(message);
+    return false;
+  };
+  const columnError = 'The number of columns in the data does not match the number of columns in the range. The data has 2 but the range has 6.';
+  context.OfflineSync.queue = [
+    { id: 'mating-one', type: 'recordMating', args: ['1', '2026-09-29'], state: 'failed', error: columnError },
+    { id: 'mating-two', type: 'recordMating', args: ['2', '2026-09-29'], state: 'failed', error: columnError, semenCollectionDate: '2026-09-29', semenAgeDays: 0 },
+    { id: 'pen-one', type: 'deletePenTask', args: ['8', '去勢', '2026-09-01'], state: 'failed', error: '権限がありません' }
+  ];
+  context.OfflineSync.showStatus();
+  assert.equal(seen.length, 1);
+  assert.match(seen[0], /3件あります/);
+  assert.match(seen[0], /2件/);
+  assert.match(seen[0], /種付 No\.1/);
+  assert.match(seen[0], /精液0日齢/);
+  assert.match(seen[0], /E1:F1/);
+  assert.match(seen[0], /作業取消/);
+  assert.match(seen[0], /権限がありません/);
+  assert.equal(context.OfflineSync.queue.length, 3);
+  assert.equal(context.OfflineSync.queue[0].state, 'failed');
+});
