@@ -154,6 +154,9 @@ var SowLocation = {
     SowLocation.actionSowNo = sowNo;
     document.getElementById('death-sow-label').textContent = 'No.' + sowNo;
     document.getElementById('death-count').value = '';
+    document.getElementById('death-cause').value = '';
+    document.getElementById('death-weight').value = '';
+    document.getElementById('death-memo').value = '';
     document.getElementById('death-submit').disabled = false;
     App.setDateDefault('death-date');
     App.showModal('death-modal');
@@ -162,15 +165,18 @@ var SowLocation = {
   submitDeath: function() {
     var sowNo = SowLocation.actionSowNo;
     var dateStr = document.getElementById('death-date').value;
-    var count = parseInt(document.getElementById('death-count').value) || 0;
+    var count = parseInt(document.getElementById('death-count').value, 10) || 0;
+    var cause = document.getElementById('death-cause').value;
+    var weight = document.getElementById('death-weight').value.trim();
+    var memo = document.getElementById('death-memo').value.trim();
 
     if (count <= 0) { App.toast('頭数を入力してください'); return; }
     if (!App.tryAction('death-submit')) return;
 
-    OfflineSync.enqueue('recordNursingAccident', [sowNo, dateStr, count]);
+    OfflineSync.enqueue('recordNursingAccident', [sowNo, dateStr, count, cause || 'その他', weight, memo]);
     App.hideModal('death-modal');
     App.armTapShield(400);
-    Farrowing.accidentList.unshift({ sowNo: sowNo, date: dateStr, count: count });
+    Farrowing.accidentList.unshift({ sowNo: sowNo, date: dateStr, count: count, cause: cause, weightKg: weight, memo: memo });
     App.toast('子豚死亡を登録しました');
   },
 

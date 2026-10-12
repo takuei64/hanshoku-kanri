@@ -34,6 +34,7 @@ var App = {
     PostMating.list = data.postMatingList || [];
     Farrowing.list = data.farrowingList || [];
     Farrowing.accidentList = data.accidentList || [];
+    Farrowing.lotReport = data.matingLotReport || null;
     SowLocation.list = data.locationList || [];
     ReheatCheck.list = data.reheatCheckList || [];
     PregCheck.list = data.pregnancyCheckList || [];
@@ -63,7 +64,11 @@ var App = {
     // キャッシュ済みデータで描画（サーバー呼出し不要）
     if (page === 'breeding') Breeding.render();
     if (page === 'pregcheck') PregCheck.render();
-    if (page === 'farrowing') { Farrowing.render(); Farrowing.renderAccidents(); }
+    if (page === 'farrowing') {
+      Farrowing.render();
+      Farrowing.renderAccidents();
+      if (Farrowing.lotPanelOpen) Farrowing.ensureLotReportLoaded();
+    }
     if (page === 'location') SowLocation.render();
     if (page === 'pentask') PenTask.render();
     if (page === 'sowcard' && opts && opts.sowNo) SowCard.search(opts.sowNo);
@@ -87,6 +92,9 @@ var App = {
           App.toast('未送信の入力があるため、一覧の上書きを止めました');
           return false;
         }
+        Farrowing.lotReport = null;
+        var lotSelect = document.getElementById('lot-select');
+        if (lotSelect) lotSelect.options.length = 0;
         if (typeof PwaShell !== 'undefined' && PwaShell.applyData) {
           PwaShell.applyData(data);
         } else {
@@ -100,7 +108,11 @@ var App = {
           PenTask.list = data.penTaskList || [];
           if (App.currentPage === 'breeding') Breeding.render();
           if (App.currentPage === 'pregcheck') PregCheck.render();
-          if (App.currentPage === 'farrowing') { Farrowing.render(); Farrowing.renderAccidents(); }
+          if (App.currentPage === 'farrowing') {
+            Farrowing.render();
+            Farrowing.renderAccidents();
+            if (Farrowing.lotPanelOpen) Farrowing.ensureLotReportLoaded();
+          }
           if (App.currentPage === 'location') SowLocation.render();
           if (App.currentPage === 'pentask') PenTask.render();
         }

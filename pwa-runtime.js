@@ -40,6 +40,7 @@
         postMatingList: typeof PostMating !== 'undefined' ? (PostMating.list || []) : [],
         farrowingList: typeof Farrowing !== 'undefined' ? (Farrowing.list || []) : [],
         accidentList: typeof Farrowing !== 'undefined' ? (Farrowing.accidentList || []) : [],
+        matingLotReport: typeof Farrowing !== 'undefined' ? (Farrowing.lotReport || null) : null,
         locationList: SowLocation.list || [],
         reheatCheckList: typeof ReheatCheck !== 'undefined' ? (ReheatCheck.list || []) : [],
         pregnancyCheckList: typeof PregCheck !== 'undefined' ? (PregCheck.list || []) : [],
@@ -323,6 +324,9 @@
       PostMating.list = data.postMatingList || [];
       Farrowing.list = data.farrowingList || [];
       Farrowing.accidentList = data.accidentList || [];
+      Farrowing.lotReport = data.matingLotReport || null;
+      var lotSelect = document.getElementById('lot-select');
+      if (lotSelect) lotSelect.options.length = 0;
       SowLocation.list = data.locationList || [];
       ReheatCheck.list = data.reheatCheckList || [];
       PregCheck.list = data.pregnancyCheckList || [];

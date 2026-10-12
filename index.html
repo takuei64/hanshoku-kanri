@@ -66,6 +66,22 @@
   <div id="page-farrowing" class="page">
     <div id="farrowing-list"></div>
 
+    <div class="card" id="lot-section" style="margin-top:8px">
+      <div class="section-toggle" onclick="Farrowing.toggleLotPanel()">
+        <span id="lot-toggle-label">＋ 種付ロット一覧</span>
+      </div>
+      <div id="lot-panel" style="display:none">
+        <div class="form-row" style="margin-top:8px">
+          <div class="form-group" style="flex:1">
+            <label>ロット</label>
+            <select id="lot-select" onchange="Farrowing.renderLotDetail()"></select>
+          </div>
+        </div>
+        <div id="lot-summary" class="lot-summary"></div>
+        <div id="lot-detail"></div>
+      </div>
+    </div>
+
     <!-- ほ育事故記録フォーム（折りたたみ） -->
     <div class="card" id="accident-section" style="margin-top:8px">
       <div class="section-toggle" onclick="Farrowing.toggleAccidentForm()">
@@ -85,6 +101,23 @@
         <div class="form-group">
           <label>頭数</label>
           <input type="number" id="accident-count" inputmode="numeric" placeholder="事故頭数">
+        </div>
+        <div class="form-group">
+          <label>原因</label>
+          <select id="accident-cause">
+            <option value="">未選択</option>
+            <option value="虚弱">虚弱</option>
+            <option value="圧死">圧死</option>
+            <option value="その他">その他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>体重 (kg・1頭分)</label>
+          <input type="number" id="accident-weight" inputmode="decimal" step="0.01" placeholder="例: 0.85">
+        </div>
+        <div class="form-group">
+          <label>メモ</label>
+          <input type="text" id="accident-memo" placeholder="任意">
         </div>
         <button class="submit-btn" id="accident-submit" onclick="Farrowing.submitAccident()">事故を記録</button>
       </div>
@@ -120,15 +153,42 @@
         <label>分娩日</label>
         <input type="date" id="farrow-record-date">
       </div>
+      <div class="form-group">
+        <label>総産子数</label>
+        <input type="number" id="farrow-record-total" inputmode="numeric" placeholder="0">
+      </div>
       <div class="form-row">
         <div class="form-group" style="flex:1">
-          <label>総産子数</label>
-          <input type="number" id="farrow-record-total" inputmode="numeric" placeholder="0">
+          <label>死残・白子</label>
+          <input type="number" id="farrow-record-still-white" inputmode="numeric" placeholder="0">
         </div>
         <div class="form-group" style="flex:1">
-          <label>死産数</label>
-          <input type="number" id="farrow-record-still" inputmode="numeric" placeholder="0">
+          <label>死残・黒子</label>
+          <input type="number" id="farrow-record-still-black" inputmode="numeric" placeholder="0">
         </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1">
+          <label>サイズ感（全体）</label>
+          <select id="farrow-record-size">
+            <option value="">未記入</option>
+            <option value="小">小</option>
+            <option value="中">中</option>
+            <option value="大">大</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>ばらつき</label>
+          <select id="farrow-record-variation">
+            <option value="">未記入</option>
+            <option value="小">小</option>
+            <option value="大">大</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>メモ</label>
+        <input type="text" id="farrow-record-memo" placeholder="任意">
       </div>
       <button class="submit-btn" onclick="Farrowing.confirmRecord()">分娩を記録</button>
     </div>
@@ -162,6 +222,23 @@
       <div class="form-group">
         <label>死亡頭数</label>
         <input type="number" id="death-count" inputmode="numeric" placeholder="頭数">
+      </div>
+      <div class="form-group">
+        <label>原因</label>
+        <select id="death-cause">
+          <option value="">未選択→その他</option>
+          <option value="虚弱">虚弱</option>
+          <option value="圧死">圧死</option>
+          <option value="その他">その他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>体重 (kg・1頭分)</label>
+        <input type="number" id="death-weight" inputmode="decimal" step="0.01" placeholder="分娩車内で測定">
+      </div>
+      <div class="form-group">
+        <label>メモ</label>
+        <input type="text" id="death-memo" placeholder="任意">
       </div>
       <button class="submit-btn" style="background:var(--danger)" id="death-submit" onclick="SowLocation.submitDeath()">登録する</button>
     </div>

@@ -378,6 +378,17 @@ body {
   border-bottom: 2px solid var(--primary);
 }
 
+.lot-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+.lot-table tbody tr {
+  cursor: pointer;
+}
+
 /* 分娩移動テーブル */
 .farrow-table {
   width: 100%; border-collapse: collapse;
