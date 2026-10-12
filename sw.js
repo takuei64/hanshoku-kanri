@@ -1,10 +1,6 @@
 'use strict';
 
-<<<<<<< HEAD
-const CACHE_NAME = 'breeding-pwa-v140-confirm-reason';
-=======
-const CACHE_NAME = 'breeding-pwa-v144-production-analysis-1';
->>>>>>> 44743ea (Bump service worker cache for production analysis UI.)
+const CACHE_NAME = 'breeding-pwa-v146-production-analysis-2';
 const BASE_PATH = '/hanshoku-kanri/';
 const APP_SHELL = [
   BASE_PATH,
@@ -39,7 +35,9 @@ self.addEventListener('activate', function(event) {
   event.waitUntil(
     caches.keys()
       .then(function(keys) {
-        return Promise.all(keys.filter(function(key) { return key.indexOf('breeding-pwa-') === 0 && key !== CACHE_NAME; }).map(function(key) {
+        return Promise.all(keys.filter(function(key) {
+          return key.indexOf('breeding-pwa-') === 0 && key !== CACHE_NAME;
+        }).map(function(key) {
           return caches.delete(key);
         }));
       })
@@ -52,32 +50,23 @@ self.addEventListener('fetch', function(event) {
   var url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      // 一度準備した端末では、通信確認より先に必ず端末内の画面を返す。
-      // これにより圏外・認証画面へのリダイレクト・弱い電波の待ち時間を避ける。
-      caches.match(BASE_PATH + 'index.html').then(function(cached) {
+  event.respondWith(
+    fetch(request).then(function(response) {
+      if (response && response.ok) {
+        var copy = response.clone();
+        caches.open(CACHE_NAME).then(function(cache) { cache.put(request, copy); });
+      }
+      return response;
+    }).catch(function() {
+      return caches.match(request).then(function(cached) {
         if (cached) return cached;
-        return fetch(BASE_PATH + 'index.html').catch(function() {
+        if (event.request.mode === 'navigate') {
           return new Response('オフライン準備が未完了です', {
             status: 503,
             headers: { 'Content-Type': 'text/plain; charset=utf-8' }
           });
-        });
-      })
-    );
-    return;
-  }
-
-  event.respondWith(
-    caches.match(request).then(function(cached) {
-      if (cached) return cached;
-      return fetch(request).then(function(response) {
-        if (response && response.ok) {
-          var copy = response.clone();
-          caches.open(CACHE_NAME).then(function(cache) { cache.put(request, copy); });
         }
-        return response;
+        return new Response('', { status: 504 });
       });
     })
   );
