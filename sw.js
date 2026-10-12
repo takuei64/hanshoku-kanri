@@ -1,6 +1,10 @@
 'use strict';
 
+<<<<<<< HEAD
 const CACHE_NAME = 'breeding-pwa-v140-confirm-reason';
+=======
+const CACHE_NAME = 'breeding-pwa-v144-production-analysis-1';
+>>>>>>> 44743ea (Bump service worker cache for production analysis UI.)
 const BASE_PATH = '/hanshoku-kanri/';
 const APP_SHELL = [
   BASE_PATH,
