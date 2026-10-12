@@ -116,7 +116,9 @@ var Farrowing = {
     summaryEl.innerHTML =
       '<div class="lot-summary-grid">' +
         '<div><strong>種付月</strong><br>' + (lot.label || lot.month || '—') + '</div>' +
-        '<div><strong>頭数</strong><br>' + (lot.uniqueSows || s.uniqueSows || lot.count) + '頭</div>' +
+        '<div><strong>頭数</strong><br>' + (lot.uniqueSows || s.uniqueSows || lot.count) + '頭' +
+          (lot.departedCount ? '（離脱' + lot.departedCount + '）' : '') + '</div>' +
+        '<div><strong>範囲</strong><br>' + (lot.scopeLabel || '—') + '</div>' +
         '<div><strong>過去平均産子</strong><br>' + (s.avgHistTotalBorn != null ? s.avgHistTotalBorn : '—') + '</div>' +
         '<div><strong>今回分娩済</strong><br>' + (s.farrowed || 0) + ' / 平均' + (s.avgTotalBorn || 0) + '</div>' +
         '<div><strong>産子分布</strong><br>&lt;10:' + (buckets.low || 0) +
