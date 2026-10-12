@@ -6,7 +6,7 @@ var Farrowing = {
   recordSowNo: null,
   lotReport: null,
   lotPanelOpen: false,
-  selectedLotNo: 1,
+  selectedLotKey: '',
 
   render: function() {
     var container = document.getElementById('farrowing-list');
@@ -50,7 +50,7 @@ var Farrowing = {
   toggleLotPanel: function() {
     Farrowing.lotPanelOpen = !Farrowing.lotPanelOpen;
     document.getElementById('lot-panel').style.display = Farrowing.lotPanelOpen ? 'block' : 'none';
-    document.getElementById('lot-toggle-label').textContent = Farrowing.lotPanelOpen ? '－ 種付ロット一覧' : '＋ 種付ロット一覧';
+    document.getElementById('lot-toggle-label').textContent = Farrowing.lotPanelOpen ? '－ 種付月別一覧' : '＋ 種付月別一覧';
     if (Farrowing.lotPanelOpen) Farrowing.ensureLotReportLoaded();
   },
 
@@ -85,22 +85,24 @@ var Farrowing = {
       for (var i = 0; i < Farrowing.lotReport.lots.length; i++) {
         var lot = Farrowing.lotReport.lots[i];
         var opt = document.createElement('option');
-        opt.value = String(lot.lotNo);
-        opt.textContent = 'Lot ' + lot.lotNo + ' (' + lot.count + '頭)';
+        opt.value = String(lot.month || lot.lotNo);
+        var uniq = lot.uniqueSows != null ? lot.uniqueSows : lot.count;
+        opt.textContent = (lot.label || lot.month) + '（種付' + lot.count + '・母豚' + uniq + '）';
         select.appendChild(opt);
       }
     }
-    Farrowing.selectedLotNo = parseInt(select.value, 10) || 1;
+    Farrowing.selectedLotKey = select.value;
     Farrowing.renderLotDetail();
   },
 
   renderLotDetail: function() {
     var select = document.getElementById('lot-select');
     if (!select || !Farrowing.lotReport) return;
-    Farrowing.selectedLotNo = parseInt(select.value, 10) || 1;
+    Farrowing.selectedLotKey = select.value;
     var lot = null;
     for (var i = 0; i < Farrowing.lotReport.lots.length; i++) {
-      if (Farrowing.lotReport.lots[i].lotNo === Farrowing.selectedLotNo) {
+      var key = String(Farrowing.lotReport.lots[i].month || Farrowing.lotReport.lots[i].lotNo);
+      if (key === String(Farrowing.selectedLotKey)) {
         lot = Farrowing.lotReport.lots[i];
         break;
       }
@@ -109,37 +111,43 @@ var Farrowing = {
 
     var summaryEl = document.getElementById('lot-summary');
     var s = lot.summary || {};
+    var buckets = s.histBornBuckets || {};
     var range = (lot.from || '—') + ' 〜 ' + (lot.to || '—');
     summaryEl.innerHTML =
       '<div class="lot-summary-grid">' +
-        '<div><strong>種付期間</strong><br>' + range + '</div>' +
-        '<div><strong>分娩済</strong><br>' + (s.farrowed || 0) + ' / ' + lot.count + '頭</div>' +
-        '<div><strong>平均総産子</strong><br>' + (s.avgTotalBorn || 0) + '</div>' +
-        '<div><strong>死残計</strong><br>' + (s.stillSum || 0) + ' (白' + (s.stillWhiteSum || 0) + '/黒' + (s.stillBlackSum || 0) + ')</div>' +
-        '<div><strong>保育死亡</strong><br>' + (s.nurseryDeaths || 0) + '頭</div>' +
-        '<div><strong>サイズ</strong><br>小' + ((s.sizeCounts && s.sizeCounts['小']) || 0) +
-          ' / 中' + ((s.sizeCounts && s.sizeCounts['中']) || 0) +
-          ' / 大' + ((s.sizeCounts && s.sizeCounts['大']) || 0) + '</div>' +
-      '</div>';
+        '<div><strong>種付月</strong><br>' + (lot.label || lot.month || '—') + '</div>' +
+        '<div><strong>種付件数</strong><br>' + lot.count + '件（母豚' + (lot.uniqueSows || s.uniqueSows || '—') + '）</div>' +
+        '<div><strong>過去平均産子</strong><br>' + (s.avgHistTotalBorn != null ? s.avgHistTotalBorn : '—') + '</div>' +
+        '<div><strong>今回分娩済</strong><br>' + (s.farrowed || 0) + ' / 平均' + (s.avgTotalBorn || 0) + '</div>' +
+        '<div><strong>産子分布</strong><br>&lt;10:' + (buckets.low || 0) +
+          ' / 10-12:' + (buckets.mid || 0) + ' / 12+:' + (buckets.high || 0) +
+          ' / 初:' + (buckets.unknown || 0) + '</div>' +
+        '<div><strong>死産計</strong><br>' + (s.stillSum || 0) + ' (白' + (s.stillWhiteSum || 0) + '/黒' + (s.stillBlackSum || 0) + ')</div>' +
+      '</div>' +
+      '<div class="history-note">' + (Farrowing.lotReport.target || '') + '</div>';
 
     var html = '<table class="farrow-table lot-table"><thead><tr>' +
-      '<th>No</th><th>Pen</th><th>種付</th><th>分娩</th><th>産子</th><th>死残</th><th>サイズ</th><th>保育死</th>' +
+      '<th>No</th><th>Pen</th><th>種付</th><th>日</th><th>産次</th><th>平均</th><th>前回</th><th>今回</th><th>死産</th><th>保</th>' +
       '</tr></thead><tbody>';
     for (var r = 0; r < lot.rows.length; r++) {
       var row = lot.rows[r];
       var f = row.farrowing;
       var born = f ? f.totalBorn : '—';
-      var still = f ? ((f.stillWhite || 0) + (f.stillBlack || 0) || f.stillTotal || 0) : '—';
-      var stillDetail = f && (f.stillWhite || f.stillBlack) ? (f.stillWhite || 0) + '/' + (f.stillBlack || 0) : still;
-      var size = f && f.sizeLevel ? f.sizeLevel : '—';
+      var stillDetail = f ? ((f.stillWhite || 0) + '/' + (f.stillBlack || 0)) : '—';
+      if (f && !(f.stillWhite || f.stillBlack) && f.stillTotal) stillDetail = String(f.stillTotal);
+      var avgHist = row.avgHistTotalBorn != null ? row.avgHistTotalBorn : '—';
+      var lastBorn = row.lastTotalBorn != null ? row.lastTotalBorn : '—';
+      var days = row.daysSinceMating !== '' && row.daysSinceMating != null ? row.daysSinceMating : '—';
       html += '<tr onclick="App.navigateTo(\'sowcard\', { sowNo: ' + row.sowNo + ' })">';
       html += '<td>' + row.sowNo + '</td>';
-      html += '<td>' + row.penNo + '</td>';
+      html += '<td>' + (row.penNo || '—') + '</td>';
       html += '<td>' + (row.latestMatingDate || '').slice(5) + '</td>';
-      html += '<td>' + (row.latestFarrowingDate || '—').slice(5) + '</td>';
+      html += '<td>' + days + '</td>';
+      html += '<td>' + (row.parity != null ? row.parity : '—') + '</td>';
+      html += '<td>' + avgHist + '</td>';
+      html += '<td>' + lastBorn + '</td>';
       html += '<td>' + born + '</td>';
       html += '<td>' + stillDetail + '</td>';
-      html += '<td>' + size + '</td>';
       html += '<td>' + (row.nurseryDeaths || 0) + '</td>';
       html += '</tr>';
     }
