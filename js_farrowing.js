@@ -87,7 +87,7 @@ var Farrowing = {
         var opt = document.createElement('option');
         opt.value = String(lot.month || lot.lotNo);
         var uniq = lot.uniqueSows != null ? lot.uniqueSows : lot.count;
-        opt.textContent = (lot.label || lot.month) + '（種付' + lot.count + '・母豚' + uniq + '）';
+        opt.textContent = (lot.label || lot.month) + '（' + uniq + '頭）';
         select.appendChild(opt);
       }
     }
@@ -116,7 +116,7 @@ var Farrowing = {
     summaryEl.innerHTML =
       '<div class="lot-summary-grid">' +
         '<div><strong>種付月</strong><br>' + (lot.label || lot.month || '—') + '</div>' +
-        '<div><strong>種付件数</strong><br>' + lot.count + '件（母豚' + (lot.uniqueSows || s.uniqueSows || '—') + '）</div>' +
+        '<div><strong>頭数</strong><br>' + (lot.uniqueSows || s.uniqueSows || lot.count) + '頭</div>' +
         '<div><strong>過去平均産子</strong><br>' + (s.avgHistTotalBorn != null ? s.avgHistTotalBorn : '—') + '</div>' +
         '<div><strong>今回分娩済</strong><br>' + (s.farrowed || 0) + ' / 平均' + (s.avgTotalBorn || 0) + '</div>' +
         '<div><strong>産子分布</strong><br>&lt;10:' + (buckets.low || 0) +
@@ -141,7 +141,10 @@ var Farrowing = {
       html += '<tr onclick="App.navigateTo(\'sowcard\', { sowNo: ' + row.sowNo + ' })">';
       html += '<td>' + row.sowNo + '</td>';
       html += '<td>' + (row.penNo || '—') + '</td>';
-      html += '<td>' + (row.latestMatingDate || '').slice(5) + '</td>';
+      var mateLabel = (row.latestMatingDate || '').slice(5);
+      if (row.servicesInMonth > 1) mateLabel += ' 再';
+      else if (row.followups > 0) mateLabel += ' +' + row.followups;
+      html += '<td>' + mateLabel + '</td>';
       html += '<td>' + days + '</td>';
       html += '<td>' + (row.parity != null ? row.parity : '—') + '</td>';
       html += '<td>' + avgHist + '</td>';

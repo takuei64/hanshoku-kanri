@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'breeding-pwa-v147-monthly-lots-1';
+const CACHE_NAME = 'breeding-pwa-v148-unique-sows-1';
 const BASE_PATH = '/hanshoku-kanri/';
 const APP_SHELL = [
   BASE_PATH,
