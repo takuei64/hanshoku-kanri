@@ -26,6 +26,7 @@ var PregCheck = {
       html += '</div>';
       html += '<div style="display:flex;gap:4px">';
       html += '<button class="btn-move-sm" style="background:var(--success)" onclick="PregCheck.confirm(\'' + s.sowNo + '\',\'妊娠鑑定済\')">合格</button>';
+      html += '<button class="btn-move-sm" style="background:var(--danger)" onclick="Breeding.openStatusModal(\'' + s.sowNo + '\',\'流産\')">流産</button>';
       html += '<button class="btn-move-sm" style="background:var(--danger)" onclick="PregCheck.confirm(\'' + s.sowNo + '\',\'空胎\')">空胎</button>';
       html += '</div>';
       html += Breeding.renderHistory(s);

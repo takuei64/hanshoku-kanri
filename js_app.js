@@ -132,7 +132,7 @@ var App = {
     if (status === '継続') return 'check';
     if (status === '妊娠鑑定済') return 'pregnant';
     if (String(status || '').indexOf('廃用') >= 0) return 'empty';
-    if (String(status || '').indexOf('空胎') >= 0) return 'empty';
+    if (String(status || '').indexOf('空胎') >= 0 || status === '流産') return 'empty';
     if (status === '種付待ち') return 'check';
     if (status === '通常') return 'mated';
     return 'done';
