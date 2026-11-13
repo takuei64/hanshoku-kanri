@@ -1,4 +1,4 @@
-// 公開Pages版の流産記録フローと、「15日後再表示」まわりの現状固定テスト。
+// 公開Pages版の流産記録フローと、「15日後再表示」まわりのテスト（流産は測定終了から15日後に再表示）。
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -69,6 +69,7 @@ test('Pages sw.js: 流産対応のJSをキャッシュし、main からキャッ
   let mainName = null;
   try { mainName = execFileSync('git', ['show', 'main:sw.js'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).match(/CACHE_NAME = '([^']+)'/)[1]; } catch (e) { /* main が無い環境では比較しない */ }
   if (mainName) assert.notEqual(name, mainName, '公開後に古いJSが残らないようキャッシュ名を変える');
+  assert.equal(name, 'breeding-pwa-v151-abortion-relist-1');
 });
 
 test('Pages: 妊娠鑑定カードの流産→日付確認→キュー送信、妊娠中リストから外れ朝リストに「流産 N日目」', () => {
@@ -145,7 +146,7 @@ test('Pages: 現在地の操作シートの流産ボタンも同じ日付モー�
   assert.equal(c.Breeding.list.find(s => s.sowNo === '999001').reason, '流産 0日目');
 });
 
-test('Pages: 流産カードの測定終了は朝リストから外すだけで、再表示用のローカル処理は持たない', () => {
+test('Pages: 流産カードの測定終了は朝リストから外すだけ（15日後の再表示はサーバー再取得時）', () => {
   const { c, el } = loadPages();
   seedPregnant(c);
   c.Breeding.openStatusModal('999001', '流産');
@@ -163,7 +164,7 @@ test('Pages: 流産カードの測定終了は朝リストから外すだけで�
   assert.equal(c.Breeding.list.find(s => s.sowNo === '999002').reason, '空胎 0日目');
 });
 
-// ---------- GAS 側の一覧計算（変更せず現状を固定） ----------
+// ---------- GAS 側の一覧計算 ----------
 
 function loadGas() {
   const c = vm.createContext({ Date, console, daysBetween: (a, b) => Math.floor((b - a) / 86400000), normalizeSowNo: v => String(v || ''),
@@ -186,24 +187,54 @@ test('現状固定: 育成豚（種付・分娩なし）は測定終了から15�
   assert.equal(m({ latestMoveDate: ago(40), breedingDoneDate: ago(60) }).length, 1);
 });
 
-test('現状固定: 流産・空胎は測定終了で朝リストから外れ、15日以上たっても自動再表示しない', () => {
+test('空胎は測定終了で朝リストから外れ、15日以上たっても自動再表示しない（従来どおり）', () => {
   const c = loadGas();
   const m = r => c.buildMorningListFromCurrent_([row(r)]);
-  for (const st of ['流産', '空胎']) {
-    const base = { latestMoveDate: ago(90), latestMatingDate: ago(60), matingStatus: st, emptyDate: ago(40) };
-    const shown = m(base);
-    assert.equal(shown.length, 1, st);
-    assert.equal(shown[0].reason, st + ' 40日目');
-    assert.equal(shown[0].status, st);
-    assert.equal(shown[0].group, 0);
-    for (const n of [39, 25, 15, 14, 0]) assert.equal(m({ ...base, breedingDoneDate: ago(n) }).length, 0, st + ' 測定終了' + n + '日前');
-    // 流産/空胎より前の測定終了は除外理由にならない
-    assert.equal(m({ ...base, breedingDoneDate: ago(41) }).length, 1, st);
-    // 再種付け後は以前の流産/空胎で出さない
-    assert.equal(m({ ...base, latestMatingDate: ago(10) }).length, 0, st);
-    // ストール以外は出さない
-    assert.equal(m({ ...base, area: '分娩舎', penNo: '301' }).length, 0, st);
+  const base = { latestMoveDate: ago(90), latestMatingDate: ago(60), matingStatus: '空胎', emptyDate: ago(40) };
+  const shown = m(base);
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0].reason, '空胎 40日目');
+  assert.equal(shown[0].status, '空胎');
+  assert.equal(shown[0].group, 0);
+  for (const n of [39, 25, 15, 14, 0]) assert.equal(m({ ...base, breedingDoneDate: ago(n) }).length, 0, '空胎 測定終了' + n + '日前');
+  assert.equal(m({ ...base, breedingDoneDate: ago(41) }).length, 1, '空胎より前の測定終了は除外理由にならない');
+  assert.equal(m({ ...base, latestMatingDate: ago(10) }).length, 0, '再種付け後は以前の空胎で出さない');
+  assert.equal(m({ ...base, area: '分娩舎', penNo: '301' }).length, 0, 'ストール以外は出さない');
+});
+
+test('流産は測定終了から14日目までは出ず、15日目から「流産 N日目」で再表示', () => {
+  const c = loadGas();
+  const m = r => c.buildMorningListFromCurrent_([row(r)]);
+  const base = { latestMoveDate: ago(90), latestMatingDate: ago(60), matingStatus: '流産', emptyDate: ago(40) };
+  const shown = m(base);
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0].reason, '流産 40日目');
+  assert.equal(shown[0].status, '流産');
+  assert.equal(shown[0].group, 0);
+  for (const n of [0, 1, 13, 14]) assert.equal(m({ ...base, breedingDoneDate: ago(n) }).length, 0, '測定終了' + n + '日前は出ない');
+  for (const n of [15, 16, 25, 40]) {
+    const back = m({ ...base, breedingDoneDate: ago(n) });
+    assert.equal(back.length, 1, '測定終了' + n + '日前は再表示');
+    assert.equal(back[0].reason, '流産 40日目', '日数は流産日から');
+    assert.equal(back[0].status, '流産');
+    assert.equal(back[0].group, 0);
   }
+  assert.equal(m({ ...base, breedingDoneDate: ago(41) }).length, 1, '流産より前の測定終了は除外理由にならない');
+  // 再種付け後は以前の流産で出さない（測定終了の有無によらず）
+  for (const done of ['', ago(20), ago(5)]) assert.equal(m({ ...base, latestMatingDate: ago(10), breedingDoneDate: done }).length, 0, '再種付後 done=' + done);
+  assert.equal(m({ ...base, area: '分娩舎', penNo: '301' }).length, 0, 'ストール以外は出さない');
+  assert.equal(m({ ...base, area: '分娩舎', penNo: '301', breedingDoneDate: ago(20) }).length, 0, 'ストール以外は15日後も出さない');
+});
+
+test('再種付け後は種後→再発の流れに戻り、朝リストの流産カードとしては出ない', () => {
+  const c = loadGas();
+  // recordMating で状態リセット後の想定（matingStatus 通常、emptyDate/breedingDoneDate 空）
+  const r = row({ latestMoveDate: ago(90), latestMatingDate: ago(20), matingStatus: '通常' });
+  assert.equal(c.buildMorningListFromCurrent_([r]).length, 0);
+  assert.equal(c.buildReheatCheckListFromCurrent_([r]).length, 1);
+  const r2 = row({ latestMoveDate: ago(90), latestMatingDate: ago(3), matingStatus: '通常' });
+  assert.equal(c.buildPostMatingListFromCurrent_([r2]).length, 1);
+  assert.equal(c.buildMorningListFromCurrent_([r2]).length, 0);
 });
 
 test('現状固定: 流産は種後・分娩予定から外れ、再発確認（種付後15〜150日）は流産/空胎日で外れる', () => {
@@ -223,19 +254,93 @@ test('現状固定: 流産は種後・分娩予定から外れ、再発確認（
   assert.equal(farrow({ latestMatingDate: ago(60), matingStatus: '空胎', emptyDate: ago(3) }), 1, '空胎の分娩予定表示は従来どおり');
 });
 
-test('現状固定: recordStatusChange で流産→測定終了とすると、測定終了日が入り15日後も朝リストに出ない', () => {
-  const sheets = { '種付': [[], ['999001', new Date(ago(60) + 'T00:00:00'), '', '']], '分娩': [[]], '繁殖管理': [[]] };
+function gasWithSheets(sheets) {
   const ss = { getSheetByName(n) { return { appendRow(r) { sheets[n].push(r); }, getDataRange() { return { getValues: () => sheets[n] }; }, getRange(i, j) { return { setValue(v) { sheets[n][i - 1][j - 1] = v; } }; } }; } };
   const c = loadGas();
   Object.assign(c, { getSpreadsheet: () => ss, getSheetData: (s, n) => sheets[n] || [[]], requireAuth_() {}, invalidateInitialCache_() {},
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) } });
-  let current = row({ latestMoveDate: ago(90), latestMatingDate: ago(60), matingStatus: '妊娠鑑定済', pregnancyDoneDate: ago(35) });
-  c.upsertCurrentRow_ = (s, sn, patch) => { current = { ...current, ...patch }; };
-  c.removeCurrentRow_ = () => { current = null; };
-  assert.equal(c.recordStatusChange('999001', '流産', ago(40), 't').success, true);
-  assert.equal(c.buildMorningListFromCurrent_([current]).length, 1);
-  assert.equal(c.recordStatusChange('999001', '測定終了', ago(20), 't').success, true);
-  assert.equal(current.breedingDoneDate, ago(20));
-  assert.equal(current.matingStatus, '流産');
-  assert.equal(c.buildMorningListFromCurrent_([current]).length, 0, '測定終了から20日たっても再表示しない');
+  c.getPenAreaForCurrent_ = () => 'ストール';
+  return { c, ss };
+}
+
+test('recordStatusChange で流産→測定終了とすると、測定終了日が入り14日は出ず15日で再表示', () => {
+  for (const [doneAgo, want] of [[0, 0], [14, 0], [15, 1], [20, 1]]) {
+    const sheets = { '種付': [[], ['999001', new Date(ago(60) + 'T00:00:00'), '', '']], '分娩': [[]], '繁殖管理': [[]] };
+    const { c } = gasWithSheets(sheets);
+    let current = row({ latestMoveDate: ago(90), latestMatingDate: ago(60), matingStatus: '妊娠鑑定済', pregnancyDoneDate: ago(35) });
+    c.upsertCurrentRow_ = (s, sn, patch) => { current = { ...current, ...patch }; };
+    c.removeCurrentRow_ = () => { current = null; };
+    assert.equal(c.recordStatusChange('999001', '流産', ago(40), 't').success, true);
+    assert.equal(c.buildMorningListFromCurrent_([current]).length, 1);
+    assert.equal(c.recordStatusChange('999001', '測定終了', ago(doneAgo), 't').success, true);
+    assert.equal(current.breedingDoneDate, ago(doneAgo));
+    assert.equal(current.matingStatus, '流産');
+    const m = c.buildMorningListFromCurrent_([current]);
+    assert.equal(m.length, want, '測定終了' + doneAgo + '日前');
+    if (want) assert.equal(m[0].reason, '流産 40日目');
+  }
+});
+
+test('syncCurrentStatusForSow_: 流産→測定終了のあと同期しても測定終了日が残り、15日未満は出ず15日以上で再表示', () => {
+  const D = s => new Date(s + 'T00:00:00');
+  for (const [doneAgo, want] of [[0, 0], [10, 0], [14, 0], [15, 1], [20, 1]]) {
+    const sheets = {
+      '種付': [[], ['999001', D(ago(60)), '', '']], '分娩': [[]],
+      '繁殖管理': [[], [D(ago(90)), '999001', '23', '', ''], [D(ago(35)), '999001', '', '', '妊娠鑑定済'],
+        [D(ago(40)), '999001', '', '', '流産'], [D(ago(doneAgo)), '999001', '', '', '測定終了']]
+    };
+    const { c, ss } = gasWithSheets(sheets);
+    let current = null;
+    c.upsertCurrentRow_ = (s, sn, patch) => { current = { ...(current || {}), ...patch }; };
+    c.removeCurrentRow_ = () => { current = null; };
+    c.syncCurrentStatusForSow_(ss, '999001');
+    assert.equal(current.matingStatus, '流産');
+    assert.equal(current.emptyDate, ago(40));
+    assert.equal(current.breedingDoneDate, ago(doneAgo), '同期後も測定終了日が残る');
+    assert.equal(c.buildMorningListFromCurrent_([current]).length, want, '測定終了' + doneAgo + '日前');
+  }
+});
+
+test('syncCurrentStatusForSow_: 流産日より前の測定終了・新しい種付より前の測定終了は持ち越さない', () => {
+  const D = s => new Date(s + 'T00:00:00');
+  // 流産日より前の測定終了は保持しない → 朝リストに出る
+  {
+    const sheets = { '種付': [[], ['999001', D(ago(60)), '', '']], '分娩': [[]],
+      '繁殖管理': [[], [D(ago(90)), '999001', '23', '', ''], [D(ago(45)), '999001', '', '', '測定終了'], [D(ago(40)), '999001', '', '', '流産']] };
+    const { c, ss } = gasWithSheets(sheets);
+    let current = null;
+    c.upsertCurrentRow_ = (s, sn, patch) => { current = { ...(current || {}), ...patch }; };
+    c.syncCurrentStatusForSow_(ss, '999001');
+    assert.equal(current.breedingDoneDate, '');
+    assert.equal(c.buildMorningListFromCurrent_([current]).length, 1);
+  }
+  // 流産→測定終了→再種付: 新しい周期には持ち越さず、流産カードとしても出ない
+  {
+    const sheets = { '種付': [[], ['999001', D(ago(60)), '', ''], ['999001', D(ago(5)), '', '']], '分娩': [[]],
+      '繁殖管理': [[], [D(ago(90)), '999001', '23', '', ''], [D(ago(40)), '999001', '', '', '流産'], [D(ago(20)), '999001', '', '', '測定終了']] };
+    const { c, ss } = gasWithSheets(sheets);
+    let current = null;
+    c.upsertCurrentRow_ = (s, sn, patch) => { current = { ...(current || {}), ...patch }; };
+    c.syncCurrentStatusForSow_(ss, '999001');
+    assert.equal(current.matingStatus, '通常');
+    assert.equal(current.emptyDate, '');
+    assert.equal(current.breedingDoneDate, '');
+    assert.equal(c.buildMorningListFromCurrent_([current]).length, 0);
+    assert.equal(c.buildPostMatingListFromCurrent_([current]).length, 1, '種後の流れに戻る');
+  }
+});
+
+test('syncCurrentStatusForSow_: 空胎の同期ロジックは従来どおり（測定終了後は朝リストに出ない）', () => {
+  const D = s => new Date(s + 'T00:00:00');
+  const sheets = { '種付': [[], ['999001', D(ago(60)), '', '']], '分娩': [[]],
+    '繁殖管理': [[], [D(ago(90)), '999001', '23', '', ''], [D(ago(40)), '999001', '', '', '空胎'], [D(ago(20)), '999001', '', '', '測定終了']] };
+  const { c, ss } = gasWithSheets(sheets);
+  let current = null;
+  c.upsertCurrentRow_ = (s, sn, patch) => { current = { ...(current || {}), ...patch }; };
+  c.syncCurrentStatusForSow_(ss, '999001');
+  assert.equal(current.matingStatus, '空胎');
+  // 既存挙動: 空胎の測定終了は同期で保持されない（今回は変更しない）
+  assert.equal(current.breedingDoneDate, '');
+  // recordStatusChange 直後の状態（測定終了日あり）では15日以上でも出ない
+  assert.equal(c.buildMorningListFromCurrent_([{ ...current, breedingDoneDate: ago(20) }]).length, 0);
 });
