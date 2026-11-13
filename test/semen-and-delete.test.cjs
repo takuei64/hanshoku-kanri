@@ -414,3 +414,17 @@ test('要確認ダイアログは複数件の理由をまとめて出す', funct
   assert.equal(context.OfflineSync.queue.length, 3);
   assert.equal(context.OfflineSync.queue[0].state, 'failed');
 });
+
+test('流産は既存recordStatusChangeキューで保存・再読込・送信する', function() {
+  const context = loadOffline();
+  context.OfflineSync.enqueue('recordStatusChange', ['999001', '流産', '2026-11-04']);
+  const restored = context.OfflineSync.loadQueue();
+  assert.equal(restored.length, 1);
+  assert.equal(restored[0].type, 'recordStatusChange');
+  assert.deepEqual(host(restored[0].args), ['999001', '流産', '2026-11-04']);
+  flush(context);
+  assert.equal(context.__runner.payloads[0].type, 'recordStatusChange');
+  assert.deepEqual(host(context.__runner.payloads[0].args), ['999001', '流産', '2026-11-04']);
+  context.__runner.success({ success: true, status: '流産' });
+  assert.equal(context.OfflineSync.queue.length, 0);
+});

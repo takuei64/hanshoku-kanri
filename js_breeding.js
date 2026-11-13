@@ -28,6 +28,7 @@ var Breeding = {
     if (item.kind === 'postmating') return { cls: 'type-postmating', label: '種後' };
     if (item.kind === 'reheat') return { cls: 'type-reheat', label: '再発チェック' };
     var reason = String(item.s.reason || '');
+    if (reason.indexOf('流産') >= 0) return { cls: 'type-empty', label: '流産' };
     if (reason.indexOf('空胎') >= 0) return { cls: 'type-empty', label: '空胎' };
     if (reason.indexOf('離乳') >= 0) return { cls: 'type-weaned', label: '離乳' };
     return { cls: 'type-rearing', label: '育成' };
@@ -50,8 +51,8 @@ var Breeding = {
 
     // 種別サマリー（凡例を兼ねる）
     var counts = {};
-    var order = ['離乳', '育成', '空胎', '種後', '再発チェック'];
-    var clsMap = { '離乳': 'type-weaned', '育成': 'type-rearing', '空胎': 'type-empty', '種後': 'type-postmating', '再発チェック': 'type-reheat' };
+    var order = ['離乳', '育成', '空胎', '流産', '種後', '再発チェック'];
+    var clsMap = { '離乳': 'type-weaned', '育成': 'type-rearing', '空胎': 'type-empty', '流産': 'type-empty', '種後': 'type-postmating', '再発チェック': 'type-reheat' };
     for (var m = 0; m < merged.length; m++) {
       var label = Breeding.typeInfo(merged[m]).label;
       counts[label] = (counts[label] || 0) + 1;
@@ -256,7 +257,7 @@ var Breeding = {
   openStatusModal: function(sowNo, status) {
     Breeding.pendingAction = { type: 'status', sowNo: sowNo, status: status };
     document.getElementById('status-modal-title').textContent = status + ' No.' + sowNo;
-    document.getElementById('status-modal-desc').textContent = 'チェック対象から外れます';
+    document.getElementById('status-modal-desc').textContent = status === '流産' ? '流産日を記録し、再種付けのチェック対象にします' : 'チェック対象から外れます';
     document.getElementById('status-semen-block').hidden = true;
     App.setDateDefault('status-date');
     App.showModal('status-modal');
@@ -268,8 +269,8 @@ var Breeding = {
     var action = Breeding.pendingAction;
     if (!action) return;
     var dateStr = document.getElementById('status-date').value;
-    if (action.type === 'mating' && !/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || ''))) {
-      App.toast('種付日を確認してください');
+    if ((action.type === 'mating' || action.status === '流産') && !/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || ''))) {
+      App.toast('記録日を確認してください');
       return;
     }
     if (!App.tryAction('status-submit')) return;
@@ -282,8 +283,10 @@ var Breeding = {
       OfflineSync.enqueue('recordMating', [action.sowNo, dateStr], null, meta);
       Breeding.render();
     } else {
-      // ステータス変更のみチェック対象から外す。種付はリストに残す。
-      if (action.status === '廃用' && typeof SowLocation !== 'undefined' && SowLocation.removeSowLocal) {
+      // 流産は再種付け対象へ移す。他の状態変更は従来どおり対象から外す。
+      if (action.status === '流産') {
+        Breeding.applyAbortionLocal(action.sowNo, dateStr);
+      } else if (action.status === '廃用' && typeof SowLocation !== 'undefined' && SowLocation.removeSowLocal) {
         SowLocation.removeSowLocal(action.sowNo);
       } else {
         Breeding.removeCard(action.sowNo);
@@ -292,6 +295,29 @@ var Breeding = {
       OfflineSync.enqueue('recordStatusChange', [action.sowNo, action.status, dateStr]);
     }
     Breeding.pendingAction = null;
+  },
+
+  /** 流産は再種付け対象へ移し、妊娠中の各リストから外す。 */
+  applyAbortionLocal: function(sowNo, dateStr) {
+    sowNo = String(sowNo);
+    var source = {};
+    var lists = [Breeding, SowLocation, PregCheck, PostMating, ReheatCheck, Farrowing];
+    lists.forEach(function(owner) {
+      owner.list.forEach(function(row) {
+        if (String(row.sowNo) === sowNo) {
+          Object.keys(row).forEach(function(key) { source[key] = row[key]; });
+          row.status = '流産';
+        }
+      });
+      if (owner !== SowLocation) owner.list = owner.list.filter(function(row) { return String(row.sowNo) !== sowNo; });
+    });
+    var days = Math.max(0, Math.round((new Date(App.today() + 'T00:00:00') - new Date(dateStr + 'T00:00:00')) / 86400000));
+    Breeding.list.push({ sowNo: sowNo, penNo: source.penNo || '不明',
+      reason: '流産 ' + days + '日目', status: '流産', group: 0, days: days,
+      reproductiveHistory: source.reproductiveHistory, btHistory: source.btHistory || [] });
+    if (App.currentPage === 'location') SowLocation.render();
+    if (App.currentPage === 'pregcheck') PregCheck.render();
+    if (App.currentPage === 'breeding') Breeding.render();
   },
 
   /** 同じ母豚が複数区分に表示されていても、削除したBT値を全カードから消す */

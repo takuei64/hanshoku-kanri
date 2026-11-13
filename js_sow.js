@@ -69,6 +69,11 @@ var SowLocation = {
     Farrowing.openRecordModal(SowLocation.actionSowNo);
   },
 
+  actionAbortion: function() {
+    App.hideModal('loc-action-sheet');
+    Breeding.openStatusModal(SowLocation.actionSowNo, '流産');
+  },
+
   actionDeath: function() {
     App.hideModal('loc-action-sheet');
     SowLocation.openDeathModal(SowLocation.actionSowNo);

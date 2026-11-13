@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'breeding-pwa-v149-historical-lots-1';
+const CACHE_NAME = 'breeding-pwa-v151-abortion-relist-1';
 const BASE_PATH = '/hanshoku-kanri/';
 const APP_SHELL = [
   BASE_PATH,
