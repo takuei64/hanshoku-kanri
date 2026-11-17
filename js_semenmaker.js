@@ -15,6 +15,11 @@ var SemenMaker = {
     { key: 'red', label: '赤', hex: '#c5221f' },
     { key: 'brown', label: '茶', hex: '#6d4c41' }
   ],
+  // 端末にも初期データにも一覧が無い（未取得）ときに出す初期選択肢。GAS の SEMEN_MAKER_DEFAULTS と同じ。
+  DEFAULTS: [
+    { name: 'メンデルジャパン', color: 'blue', active: true },
+    { name: 'ハイポーデュロック', color: 'orange', active: true }
+  ],
   list: [],
   loaded: false,
   rendered: {},
@@ -82,9 +87,13 @@ var SemenMaker = {
     if (SemenMaker.loaded) return SemenMaker.list;
     SemenMaker.loaded = true;
     var raw = SemenMaker.storageGet(SemenMaker.storageKey);
+    var parsed = null;
     if (raw) {
-      try { SemenMaker.list = SemenMaker.normalizeList(JSON.parse(raw)); } catch (e) { SemenMaker.list = []; }
+      try { parsed = JSON.parse(raw); } catch (e) { parsed = null; }
     }
+    // 取得済みの一覧（空配列＝利用者が全部消した場合を含む）はそのまま。未取得だけ初期値。
+    // 初期値は端末に保存しない（サーバーの一覧が届いたらそちらで置き換える）。
+    SemenMaker.list = SemenMaker.normalizeList(Array.isArray(parsed) ? parsed : SemenMaker.DEFAULTS);
     return SemenMaker.list;
   },
 

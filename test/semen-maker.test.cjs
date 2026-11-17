@@ -96,8 +96,9 @@ class FakeSheet {
 
 const MATING_HEADER = ['母豚No', '種付日', '再発情', '流産日', '精液採取日', '精液日齢'];
 
-function loadGas(sheets) {
+function loadGas(sheets, propsInit) {
   const book = {};
+  const props = Object.assign({}, propsInit || {});
   Object.keys(sheets || {}).forEach(name => { book[name] = new FakeSheet(name, sheets[name]); });
   const ss = {
     getSheetByName: name => book[name] || null,
@@ -108,7 +109,11 @@ function loadGas(sheets) {
     Date, Math, JSON, console: { log() {} }, String, Number, Array, Object,
     Utilities: { formatDate: d => ymd(d) },
     LockService: { getScriptLock: () => lock, getUserLock: () => lock },
-    CacheService: { getScriptCache: () => ({ get: () => null, put() {}, remove() {} }) }
+    CacheService: { getScriptCache: () => ({ get: () => null, put() {}, remove() {} }) },
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: k => (Object.prototype.hasOwnProperty.call(props, k) ? props[k] : null),
+      setProperty: (k, v) => { props[k] = String(v); }
+    }) }
   });
   for (const f of ['補助関数.js', 'api_semen_maker.js', 'api_breeding.js', 'offline_sync.js']) {
     vm.runInContext(readGas(f), c, { filename: f });
@@ -118,7 +123,7 @@ function loadGas(sheets) {
   c.upsertCurrentRow_ = () => {};
   c.invalidateInitialCache_ = () => {};
   c.parseInputDate = D;
-  return { c, book, ss };
+  return { c, book, ss, props };
 }
 
 const matingRows = () => [
@@ -330,12 +335,60 @@ test('GAS: 受付検証（recordMating は2引数のまま、saveSemenMakers は
   assert.deepEqual(seen, [3, 3, 4], '未選択・古いキューは従来の3引数で呼ぶ');
 });
 
-test('GAS: 精液メーカーシートは見出しだけで自動作成し、保存で追加・変更・無効化・削除できる', () => {
+const DEFAULT_MAKERS = [
+  { name: 'メンデルジャパン', color: 'blue', active: true },
+  { name: 'ハイポーデュロック', color: 'orange', active: true }
+];
+const DEFAULT_ROWS = [['メーカー名', '色', '有効'], ['メンデルジャパン', '青', true], ['ハイポーデュロック', '橙', true]];
+
+test('GAS: シートが無ければ見出し＋初期値2件（メンデルジャパン=青、ハイポーデュロック=橙）を書いて返す', () => {
   const { c, book } = loadGas({ '種付': matingRows() });
+  assert.deepEqual(host(c.getSemenMakers('t')), { success: true, makers: DEFAULT_MAKERS });
+  const sheet = book['精液メーカー'];
+  assert.deepEqual(host(sheet.rows), DEFAULT_ROWS);
+  assert.equal(sheet.frozen, 1);
+  assert.deepEqual(host(sheet.calls.filter(x => x[0] === 'setValues')), [['setValues', 1, 1, 1, 3], ['setValues', 2, 1, 2, 3]]);
+  // 2回目以降は追加しない
+  assert.deepEqual(host(c.getSemenMakers('t').makers), DEFAULT_MAKERS);
+  assert.equal(sheet.getLastRow(), 3);
+});
+
+test('GAS: 見出しだけ（データ行0件）のシートにも初期値2件、初回データ経由でも同じ', () => {
+  const { c, book } = loadGas({ '種付': matingRows(), '精液メーカー': [['メーカー名', '色', '有効']] });
+  assert.deepEqual(host(c.readSemenMakers_(c.getSpreadsheet(), false)), DEFAULT_MAKERS);
+  assert.deepEqual(host(book['精液メーカー'].rows), DEFAULT_ROWS);
+  assert.deepEqual(host(book['精液メーカー'].calls.filter(x => x[0] === 'setValues')), [['setValues', 2, 1, 2, 3]]);
+});
+
+test('GAS: 既にデータ行があれば初期値を追加・変更しない（消した・編集したものを復活させない）', () => {
+  const rows = [['メーカー名', '色', '有効'], ['メンデルジャパン', '緑', false], ['Aジェネ', '赤', true]];
+  const { c, book } = loadGas({ '種付': matingRows(), '精液メーカー': rows });
+  assert.deepEqual(host(c.getSemenMakers('t').makers), [
+    { name: 'メンデルジャパン', color: 'green', active: false },
+    { name: 'Aジェネ', color: 'red', active: true }
+  ]);
+  const sheet = book['精液メーカー'];
+  assert.deepEqual(host(sheet.rows), rows);
+  assert.equal(sheet.calls.filter(x => x[0] === 'setValues').length, 0);
+
+  // 利用者が全部消した（0件保存）後は、見出しだけになっても初期値を戻さない
+  const env = loadGas({ '種付': matingRows() });
+  assert.equal(env.c.getSemenMakers('t').makers.length, 2);
+  assert.equal(env.c.saveSemenMakers([], 't').success, true);
+  assert.equal(env.book['精液メーカー'].getLastRow(), 1);
+  assert.deepEqual(host(env.c.getSemenMakers('t').makers), []);
+  assert.deepEqual(host(env.c.readSemenMakers_(env.c.getSpreadsheet(), false)), []);
+  assert.equal(env.book['精液メーカー'].getLastRow(), 1);
+  // 既存の運用で保存済みの印があれば、見出しだけのシートにも入れない
+  const marked = loadGas({ '種付': matingRows(), '精液メーカー': [['メーカー名', '色', '有効']] }, { SEMEN_MAKER_SEEDED: '1' });
+  assert.deepEqual(host(marked.c.getSemenMakers('t').makers), []);
+  assert.equal(marked.book['精液メーカー'].getLastRow(), 1);
+});
+
+test('GAS: 精液メーカーシートは保存で追加・変更・無効化・削除できる', () => {
+  const { c, book } = loadGas({ '種付': matingRows(), '精液メーカー': [['メーカー名', '色', '有効']] }, { SEMEN_MAKER_SEEDED: '1' });
   assert.deepEqual(host(c.getSemenMakers('t')), { success: true, makers: [] });
   const sheet = book['精液メーカー'];
-  assert.deepEqual(host(sheet.rows), [['メーカー名', '色', '有効']], 'ダミーデータは入れない');
-  assert.equal(sheet.frozen, 1);
 
   let res = c.executeQueuedOperation({ id: 'op-mk-000000001', type: 'saveSemenMakers', args: [[
     { name: 'Aジェネ', color: 'blue', active: true },
@@ -407,10 +460,10 @@ test('GAS: 分娩予定の一覧に最新種付のメーカー名と色を付け
   plain.c.buildPenTaskList_ = () => [];
   plain.c.attachReproductiveHistory_ = () => {};
   const d2 = plain.c.getInitialData_();
-  assert.deepEqual(host(d2.semenMakers), []);
+  assert.deepEqual(host(d2.semenMakers), DEFAULT_MAKERS, 'シートが無ければ初期値2件を入れて返す');
   assert.equal(d2.farrowingList.length, 1);
   assert.equal(d2.farrowingList[0].semenMaker, undefined);
-  assert.equal(plain.book['精液メーカー'], undefined, '一覧の読み込みではシートを作らない');
+  assert.deepEqual(host(plain.book['精液メーカー'].rows), DEFAULT_ROWS);
 });
 
 // ============================================================
@@ -501,8 +554,58 @@ function mateFromBreeding(env, sowNo) {
   return () => env.c.Breeding.confirmStatus();
 }
 
-test('UI: メーカー0件でも種付画面は壊れず、未選択のまま保存すると従来と同じ payload', () => {
+test('UI: 一覧が未取得なら初期値2件、取得済みの空配列なら0件（サーバーの一覧を優先）', () => {
+  let env = loadClient();
+  let S = env.c.SemenMaker;
+  assert.deepEqual(host(S.load()), DEFAULT_MAKERS);
+  S.open('status-maker-chips');
+  let chips = env.els['status-maker-chips'].innerHTML;
+  assert.equal((chips.match(/data-maker-index="/g) || []).length, 3);
+  assert.match(chips, /maker-chip maker-none selected/, '初期値があっても最初は未選択（従来）');
+  assert.ok(chips.indexOf('メンデルジャパン') < chips.indexOf('ハイポーデュロック'), '表記どおりの順');
+  assert.match(chips, /--maker-color:#1967d2"><span class="maker-dot" aria-hidden="true"><\/span>メンデルジャパン/);
+  assert.match(chips, /--maker-color:#c25e00"><span class="maker-dot" aria-hidden="true"><\/span>ハイポーデュロック/);
+  assert.equal(env.store[S.storageKey], undefined, '初期値は端末に保存しない');
+  // 初期データに一覧が無い（古いサーバー）ときも初期値のまま
+  env = loadClient();
+  env.c.SemenMaker.init(undefined);
+  assert.deepEqual(host(env.c.SemenMaker.list), DEFAULT_MAKERS);
+
+  // 取得済みの空配列（利用者が全部消した）は0件
+  env = loadClient();
+  S = env.c.SemenMaker;
+  S.init([]);
+  assert.deepEqual(host(S.list), []);
+  S.open('status-maker-chips');
+  chips = env.els['status-maker-chips'].innerHTML;
+  assert.equal((chips.match(/data-maker-index="/g) || []).length, 1);
+  assert.match(chips, /「管理」から追加/);
+  // 端末キャッシュの空配列も0件
+  env = loadClient({ breedingSemenMakers_v1: '[]' });
+  assert.deepEqual(host(env.c.SemenMaker.load()), []);
+  // サーバーの一覧が届けば初期値を置き換える
+  env = loadClient();
+  env.c.SemenMaker.init([{ name: 'Aジェネ', color: 'green', active: true }]);
+  assert.deepEqual(host(env.c.SemenMaker.list), [{ name: 'Aジェネ', color: 'green', active: true }]);
+});
+
+test('UI: 初期値のメーカーを選ぶと payload.semenMaker、前回選択を記憶', () => {
   const env = loadClient();
+  const S = env.c.SemenMaker;
+  const confirm = mateFromBreeding(env, '60');
+  clickMaker(env, 'status-maker-chips', 1);
+  assert.equal(S.read('status-maker-chips'), 'ハイポーデュロック');
+  confirm();
+  env.flush();
+  const p = env.runner.payloads.at(-1);
+  assert.equal(p.semenMaker, 'ハイポーデュロック');
+  assert.deepEqual(p.args, ['60', '2026-11-17']);
+  env.c.Mating.open('61');
+  assert.equal(S.read('mating-maker-chips'), 'ハイポーデュロック');
+});
+
+test('UI: メーカー0件でも種付画面は壊れず、未選択のまま保存すると従来と同じ payload', () => {
+  const env = loadClient({ breedingSemenMakers_v1: '[]' });
   mateFromBreeding(env, '42')();
   const chips = env.els['status-maker-chips'].innerHTML;
   assert.match(chips, /未選択（従来）/);
@@ -521,7 +624,7 @@ test('UI: メーカー0件でも種付画面は壊れず、未選択のまま保
 });
 
 test('UI: メーカー管理で追加→種付で選択→キューの payload.semenMaker、前回選択を記憶', () => {
-  const env = loadClient();
+  const env = loadClient({ breedingSemenMakers_v1: '[]' });
   const S = env.c.SemenMaker;
   S.openManager();
   assert.ok(env.modals.includes('show:maker-modal'));
@@ -707,7 +810,7 @@ test('Pages と GAS 同梱 HTML・CSS は同一、両方の index に選択欄�
   assert.ok(pages.indexOf('js_semenmaker.js') > pages.indexOf('js_app.js') && pages.indexOf('js_semenmaker.js') < pages.indexOf('js_breeding.js'));
   assert.ok(gas.indexOf("include('js_semenmaker')") > gas.indexOf("include('js_app')") && gas.indexOf("include('js_semenmaker')") < gas.indexOf("include('js_breeding')"));
   const sw = read('sw.js');
-  assert.match(sw, /CACHE_NAME = 'breeding-pwa-v154-semen-maker-1'/);
+  assert.match(sw, /CACHE_NAME = 'breeding-pwa-v154-semen-maker-2'/);
   assert.ok(sw.includes("BASE_PATH + 'js_semenmaker.js'"));
   assert.match(readGas('webapp.js'), /method === 'getSemenMakers' && args\.length === 0/);
 });

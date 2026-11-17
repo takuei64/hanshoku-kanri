@@ -69,7 +69,7 @@ test('Pages sw.js: 流産対応のJSをキャッシュし、main からキャッ
   let mainName = null;
   try { mainName = execFileSync('git', ['show', 'main:sw.js'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).match(/CACHE_NAME = '([^']+)'/)[1]; } catch (e) { /* main が無い環境では比較しない */ }
   if (mainName) assert.notEqual(name, mainName, '公開後に古いJSが残らないようキャッシュ名を変える');
-  assert.equal(name, 'breeding-pwa-v154-semen-maker-1');
+  assert.equal(name, 'breeding-pwa-v154-semen-maker-2');
 });
 
 test('Pages: 妊娠鑑定カードの流産→日付確認→キュー送信、妊娠中リストから外れ朝リストに「流産 N日目」', () => {
