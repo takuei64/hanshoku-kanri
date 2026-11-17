@@ -405,6 +405,7 @@ var Mating = {
     App.setDateDefault('mating-date');
     SemenCollection.bind('mating-semen-chips', 'mating-date');
     SemenCollection.mount('mating-semen-chips', document.getElementById('mating-date').value, null);
+    if (typeof SemenMaker !== 'undefined') SemenMaker.open('mating-maker-chips');
     App.showModal('mating-modal');
   },
 
@@ -419,10 +420,12 @@ var Mating = {
     }
     if (!App.tryAction('mating-submit')) return;
     var meta = SemenCollection.read('mating-semen-chips');
+    var maker = typeof SemenMaker !== 'undefined' ? SemenMaker.read('mating-maker-chips') : '';
+    if (maker) meta = SemenMaker.withMaker(meta, maker);
 
     App.hideModal('mating-modal');
     App.armTapShield(400);
-    App.toast('種付を記録しました' + SemenCollection.toastSuffix(meta));
+    App.toast('種付を記録しました' + SemenCollection.toastSuffix(meta) + (maker ? SemenMaker.toastSuffix(maker) : ''));
     OfflineSync.enqueue('recordMating', [sowNo, dateStr], {
       onSuccess: function() { SowCard.refreshIfVisible(sowNo); }
     }, meta);

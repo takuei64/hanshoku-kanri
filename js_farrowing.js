@@ -34,8 +34,12 @@ var Farrowing = {
       var daysLeft = 114 - s.daysSinceMate;
       var urgency = daysLeft <= 7 ? ' class="urgent"' : daysLeft <= 14 ? ' class="soon"' : '';
 
-      html += '<tr' + urgency + '>';
-      html += '<td>' + s.sowNo + statusBadge + '</td>';
+      // 精液メーカー: 左帯の色＋名前バッジ（色だけに頼らない）。未設定は従来どおり何も出さない。
+      var makerBadge = Farrowing.makerHtml(s);
+      var stripe = Farrowing.makerStripe(s);
+      html += '<tr' + urgency + (stripe ? ' data-maker="1"' : '') + '>';
+      html += '<td' + (stripe ? ' class="maker-cell" style="box-shadow:inset 6px 0 0 ' + stripe + '"' : '') + '>' +
+        s.sowNo + statusBadge + (makerBadge ? '<div class="maker-line">' + makerBadge + '</div>' : '') + '</td>';
       html += '<td>' + s.penNo + '</td>';
       html += '<td>' + (s.matingDate || '').slice(5) + '</td>';
       html += '<td>' + s.daysSinceMate + '日</td>';
@@ -45,6 +49,21 @@ var Farrowing = {
     }
     html += '</tbody></table>';
     container.innerHTML = html;
+  },
+
+  makerHtml: function(s) {
+    return typeof SemenMaker !== 'undefined' ? SemenMaker.badgeHtml(s) : '';
+  },
+
+  makerStripe: function(s) {
+    return typeof SemenMaker !== 'undefined' ? SemenMaker.stripeHex(s) : '';
+  },
+
+  findItem: function(sowNo) {
+    for (var i = 0; i < Farrowing.list.length; i++) {
+      if (String(Farrowing.list[i].sowNo) === String(sowNo)) return Farrowing.list[i];
+    }
+    return null;
   },
 
   toggleLotPanel: function() {
@@ -171,6 +190,12 @@ var Farrowing = {
   openRecordModal: function(sowNo) {
     Farrowing.recordSowNo = sowNo;
     document.getElementById('farrow-record-sow-label').textContent = 'No.' + sowNo;
+    var makerEl = document.getElementById('farrow-record-maker');
+    if (makerEl) {
+      var makerBadge = Farrowing.makerHtml(Farrowing.findItem(sowNo));
+      makerEl.innerHTML = makerBadge ? '<span class="maker-info-label">精液メーカー</span>' + makerBadge : '';
+      makerEl.hidden = !makerBadge;
+    }
     document.getElementById('farrow-record-total').value = '';
     document.getElementById('farrow-record-still-white').value = '';
     document.getElementById('farrow-record-still-black').value = '';

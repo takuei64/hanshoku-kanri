@@ -250,6 +250,7 @@ var Breeding = {
     App.setDateDefault('status-date');
     SemenCollection.bind('status-semen-chips', 'status-date');
     SemenCollection.mount('status-semen-chips', document.getElementById('status-date').value, null);
+    if (typeof SemenMaker !== 'undefined') SemenMaker.open('status-maker-chips');
     App.showModal('status-modal');
   },
 
@@ -279,7 +280,10 @@ var Breeding = {
 
     if (action.type === 'mating') {
       var meta = SemenCollection.read('status-semen-chips');
-      App.toast('種付実施を記録しました' + SemenCollection.toastSuffix(meta));
+      // メーカー未選択なら meta は従来どおり（採取日だけ、または null）。
+      var maker = typeof SemenMaker !== 'undefined' ? SemenMaker.read('status-maker-chips') : '';
+      if (maker) meta = SemenMaker.withMaker(meta, maker);
+      App.toast('種付実施を記録しました' + SemenCollection.toastSuffix(meta) + (maker ? SemenMaker.toastSuffix(maker) : ''));
       OfflineSync.enqueue('recordMating', [action.sowNo, dateStr], null, meta);
       Breeding.render();
     } else {

@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'breeding-pwa-v153-parous-relist-1';
+const CACHE_NAME = 'breeding-pwa-v154-semen-maker-2';
 const BASE_PATH = '/hanshoku-kanri/';
 const APP_SHELL = [
   BASE_PATH,
@@ -14,6 +14,7 @@ const APP_SHELL = [
   BASE_PATH + 'pwa-hooks.js',
   BASE_PATH + 'js_offline.js',
   BASE_PATH + 'js_app.js',
+  BASE_PATH + 'js_semenmaker.js',
   BASE_PATH + 'js_breeding.js',
   BASE_PATH + 'js_postmating.js',
   BASE_PATH + 'js_reheatcheck.js',

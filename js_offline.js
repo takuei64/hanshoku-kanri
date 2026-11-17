@@ -211,6 +211,11 @@ var OfflineSync = {
     return { semenCollectionDate: date, semenAgeDays: age };
   },
 
+  normalizeSemenMaker: function(name) {
+    if (typeof name !== 'string') return '';
+    return name.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  },
+
   enqueue: function(type, args, handlers, meta) {
     var duplicate = OfflineSync.findActiveDuplicate(type, args || []);
     if (duplicate) {
@@ -254,6 +259,9 @@ var OfflineSync = {
       op.semenCollectionDate = semen.semenCollectionDate;
       op.semenAgeDays = semen.semenAgeDays;
     }
+    // 精液メーカーも任意。未選択なら項目自体を付けず、従来と同じ操作になる。
+    var maker = type === 'recordMating' ? OfflineSync.normalizeSemenMaker(meta && meta.semenMaker) : '';
+    if (maker) op.semenMaker = maker;
     OfflineSync.queue.push(op);
     OfflineSync.callbacks[op.id] = handlers || {};
     if (!OfflineSync.saveQueue() && typeof App !== 'undefined') {
@@ -417,9 +425,9 @@ var OfflineSync = {
     }, 25000);
 
     // 採取日が無くても args は2つのまま送る。未選択を理由に種付は止めない。
-    // 種付失敗の主因は本番GAS api_breeding.js の ensureMatingSemenHeaders_。
+    // 2026-09 の種付失敗は本番GAS api_breeding.js の ensureMatingSemenHeaders_ が原因だった。
     // getRange(1, 5, 1, 6) は第4引数が列数なので E〜J の6列になり、2列の見出しで例外になる。
-    // 正しいのは getRange(1, 5, 1, 2) または getRange('E1:F1')。本番GASはこのリポジトリ外で直す。
+    // GAS 側は getRange(1, 5, 1, 2) に1行×2列の見出しを書く形で復活済み（v143 以降で消えていた保存も復活）。
     var payload = {
       id: op.id,
       type: op.type,
@@ -430,6 +438,8 @@ var OfflineSync = {
       payload.semenCollectionDate = op.semenCollectionDate;
       payload.semenAgeDays = op.semenAgeDays;
     }
+    // args は2つのまま。古いGASは semenMaker を無視するだけで種付は従来どおり保存される。
+    if (op.semenMaker) payload.semenMaker = op.semenMaker;
 
     google.script.run
       .withSuccessHandler(function(res) {
@@ -533,9 +543,11 @@ var OfflineSync = {
       deleteBreedingRecord: '繁殖記録削除',
       deleteMatingRecord: '種付削除',
       deleteFarrowingRecord: '分娩削除',
-      deleteWeaningRecord: '離乳削除'
+      deleteWeaningRecord: '離乳削除',
+      saveSemenMakers: '精液メーカー設定'
     };
     var args = op.args || [];
+    if (op.type === 'saveSemenMakers') return labels.saveSemenMakers;
     var target = op.type === 'recordPenTasks' || op.type === 'deletePenTask'
       ? 'Pen ' + String(args[0] || '')
       : 'No.' + String(args[0] || '');
@@ -543,6 +555,7 @@ var OfflineSync = {
     if (op.type === 'recordMating' && op.semenCollectionDate) {
       text += ' 精液' + op.semenAgeDays + '日齢';
     }
+    if (op.type === 'recordMating' && op.semenMaker) text += ' ' + op.semenMaker;
     return text;
   }
 };

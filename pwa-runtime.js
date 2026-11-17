@@ -331,6 +331,8 @@
       ReheatCheck.list = data.reheatCheckList || [];
       PregCheck.list = data.pregnancyCheckList || [];
       PenTask.list = data.penTaskList || [];
+      // メーカー一覧は SemenMaker が専用キーで端末に保存する（未送信の編集があれば端末側を優先）。
+      if (typeof SemenMaker !== 'undefined') SemenMaker.applyServerList(data.semenMakers);
       PwaStore.saveSnapshot(data);
       if (typeof App !== 'undefined') App.navigateTo(App.currentPage || 'breeding');
     },

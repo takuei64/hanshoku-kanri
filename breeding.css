@@ -549,3 +549,85 @@ body {
   border-color: var(--primary);
 }
 .semen-chip.selected small { color: rgba(255,255,255,.92); }
+
+/* 精液メーカー: 種付モーダルの選択チップ */
+.maker-help-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.maker-manage-btn {
+  border: 1px solid var(--border); background: #fff; color: var(--primary);
+  border-radius: 8px; font-size: 14px; font-weight: 700;
+  min-height: 40px; padding: 6px 14px; cursor: pointer;
+}
+.maker-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.maker-chip {
+  --maker-color: #5f6368;
+  flex: 1 1 calc(50% - 8px); min-width: 120px; min-height: 52px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border: 2px solid var(--maker-color); border-radius: 12px;
+  background: #fff; color: var(--text);
+  font-size: 16px; font-weight: 700; line-height: 1.25;
+  padding: 8px 6px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  overflow-wrap: anywhere;
+}
+.maker-chip.maker-none { border-color: var(--border); color: var(--text-sub); }
+.maker-chip .maker-dot {
+  width: 14px; height: 14px; border-radius: 50%; flex: 0 0 14px;
+  background: var(--maker-color);
+}
+.maker-chip.selected { background: var(--maker-color); color: #fff; }
+.maker-chip.selected .maker-dot { background: #fff; }
+.maker-chip.maker-none.selected { background: #e8eaed; color: var(--text); border-color: #9aa0a6; }
+.maker-empty { flex: 1 1 100%; font-size: 13px; color: var(--text-sub); padding: 2px 0; }
+
+/* 精液メーカー: 分娩画面のバッジ（色＋名前） */
+.maker-badges { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.maker-badge {
+  display: inline-block; max-width: 9em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: #fff; background: #5f6368;
+  font-size: 13px; font-weight: 700; line-height: 1.4;
+  border-radius: 6px; padding: 2px 8px; vertical-align: middle;
+}
+.maker-mixed {
+  font-size: 12px; font-weight: 700; color: #a50e0e;
+  border: 1px solid #a50e0e; border-radius: 6px; padding: 1px 5px;
+}
+.maker-line { margin-top: 4px; white-space: normal; }
+.farrow-table td.maker-cell { padding-left: 12px; }
+.maker-info {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: -4px 0 12px; font-size: 14px;
+}
+.maker-info[hidden] { display: none; }
+.maker-info .maker-badge { font-size: 16px; padding: 4px 12px; max-width: 100%; }
+.maker-info-label { font-weight: 700; color: var(--text-sub); }
+
+/* 精液メーカー管理モーダル */
+.maker-modal { z-index: 210; }
+.maker-modal .modal-content { max-height: 88vh; }
+.maker-row {
+  border: 1px solid var(--border); border-radius: 12px;
+  padding: 10px; margin-bottom: 10px;
+}
+.maker-row.inactive { background: #f1f3f4; }
+.maker-row.inactive .maker-badge { opacity: .6; }
+.maker-row-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.maker-row-head .maker-badge { flex: 1 1 auto; font-size: 15px; max-width: none; }
+.maker-toggle, .maker-remove, .maker-add-btn {
+  border: 1px solid var(--border); background: #fff; border-radius: 8px;
+  font-size: 14px; font-weight: 700; min-height: 40px; padding: 6px 12px; cursor: pointer;
+}
+.maker-row.inactive .maker-toggle { color: #854100; }
+.maker-remove { color: #c5221f; }
+.maker-add-btn { width: 100%; margin-top: 8px; color: var(--primary); }
+.maker-name-input {
+  width: 100%; border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; font-size: 16px; margin-bottom: 8px; background: #fff;
+}
+.maker-colors { display: flex; flex-wrap: wrap; gap: 6px; }
+.maker-color {
+  flex: 1 1 calc(16.66% - 6px); min-width: 44px; min-height: 44px;
+  border: 3px solid transparent; border-radius: 10px;
+  color: #fff; font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.maker-color.selected { border-color: #202124; box-shadow: 0 0 0 2px #fff inset; }
+.maker-help { font-size: 13px; color: var(--text-sub); line-height: 1.5; margin: 4px 0 12px; }
