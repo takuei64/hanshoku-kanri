@@ -39,6 +39,7 @@ var App = {
     ReheatCheck.list = data.reheatCheckList || [];
     PregCheck.list = data.pregnancyCheckList || [];
     PenTask.list = data.penTaskList || [];
+    if (typeof SemenMaker !== 'undefined') SemenMaker.init(data.semenMakers);
     App.dataLoaded = true;
     OfflineSync.init();
     App.navigateTo('breeding');
@@ -106,6 +107,7 @@ var App = {
           ReheatCheck.list = data.reheatCheckList || [];
           PregCheck.list = data.pregnancyCheckList || [];
           PenTask.list = data.penTaskList || [];
+          if (typeof SemenMaker !== 'undefined') SemenMaker.applyServerList(data.semenMakers);
           if (App.currentPage === 'breeding') Breeding.render();
           if (App.currentPage === 'pregcheck') PregCheck.render();
           if (App.currentPage === 'farrowing') {

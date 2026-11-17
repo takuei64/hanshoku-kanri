@@ -149,6 +149,7 @@
     <div class="modal-content" style="position:relative">
       <button class="modal-close" onclick="App.hideModal('farrow-record-modal')">&times;</button>
       <div class="modal-title">分娩記録 <span id="farrow-record-sow-label"></span></div>
+      <div class="maker-info" id="farrow-record-maker" hidden></div>
       <div class="form-group">
         <label>分娩日</label>
         <input type="date" id="farrow-record-date">
@@ -336,6 +337,8 @@
       <input type="date" id="mating-date">
     </div>
     <div class="semen-block" id="mating-semen-block">
+      <div class="semen-help maker-help-row">精液メーカー <button type="button" class="maker-manage-btn" onclick="SemenMaker.openManager()">管理</button></div>
+      <div id="mating-maker-chips" class="maker-chips"></div>
       <div class="semen-help">精液の採取日（種付日が0日齢。当日〜14日前）</div>
       <div id="mating-semen-chips" class="semen-chips"></div>
     </div>
@@ -353,6 +356,8 @@
       <input type="date" id="status-date">
     </div>
     <div class="semen-block" id="status-semen-block" hidden>
+      <div class="semen-help maker-help-row">精液メーカー <button type="button" class="maker-manage-btn" onclick="SemenMaker.openManager()">管理</button></div>
+      <div id="status-maker-chips" class="maker-chips"></div>
       <div class="semen-help">精液の採取日（種付日が0日齢。当日〜14日前）</div>
       <div id="status-semen-chips" class="semen-chips"></div>
     </div>
@@ -399,6 +404,7 @@ var __authToken = PwaAuth.loadToken();
 </script>
 <script src="./js_offline.js"></script>
 <script src="./js_app.js"></script>
+<script src="./js_semenmaker.js"></script>
 <script src="./js_breeding.js"></script>
 <script src="./js_postmating.js"></script>
 <script src="./js_reheatcheck.js"></script>
